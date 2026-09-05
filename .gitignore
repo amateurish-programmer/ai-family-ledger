@@ -1,0 +1,26 @@
+# Private source ledgers and local data never belong in source control.
+*.xlsx
+*.xls
+*.csv
+*.db
+*.db-shm
+*.db-wal
+*.ledger.json
+*.jks
+*.keystore
+!android/keystore/dev-debug.jks
+.env
+.env.*
+!.env.example
+local.properties
+**/local.properties
+.idea/
+*.iml
+.gradle/
+**/.gradle/
+**/build/
+.tools/
+dist/
+__pycache__/
+*.pyc
+*.log
