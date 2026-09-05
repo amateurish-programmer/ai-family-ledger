@@ -1,0 +1,30 @@
+# 云端构建与手机下载
+
+## 首次上传
+
+1. 登录自己使用的 GitHub 账号，创建私有仓库 `ai-family-ledger`。
+2. 把源码包解压后的内容放在仓库根目录。根目录须包含 `android`、`.github`、`docs` 和 `README.md`，不要多套一层目录。
+3. 使用 Git 客户端推送，或 GitHub 网页 `Add file → Upload files`。网页上传时需确保隐藏的 `.github` 目录也上传了。不要直接上传整个 ZIP，因为 Actions 不会自动解压。
+4. 不上传本地真实 Excel、`.tools`、数据库、个人备份或密钥。源码包用明确白名单生成。
+
+## 下载 APK
+
+1. 仓库 **Actions → Android APK**，首次上传 Android 文件会自动构建，也可 **Run workflow** 手动执行。
+2. 等待任务变绿；失败时展开红色步骤查看日志，不把排队或上传源码视为已构建。
+3. 在该次运行底部 **Artifacts** 下载 `AI-Family-Ledger-debug-运行序号`。
+4. 解压 ZIP，里面的 `app-debug.apk` 发到 Android 手机安装。
+5. 手机按提示允许本次安装来源。首次启动无演示数据，输入一笔收入和支出验证。
+
+Artifact 的网页下载需要登录有权访问该仓库的 GitHub 账号。构建产物保留 14 天，可重新构建。使用自带 Actions 配额；不需要配置付费运行器，具体用量以账号后台为准。
+
+## 验证开关
+
+手动 Run workflow 时可勾选 `device_tests`，额外启动 Android 35 模拟器，验证 Room 跨实例持久化、恢复幂等和录入 UI。该步骤耗时与 Actions 用量高于普通构建。
+
+## 签名
+
+Debug APK 使用项目内固定的公开开发签名，便于同包名版本覆盖安装。这个签名仅供开发测试，不能用于正式发布；正式版上线前需独立私钥并放入 GitHub Secrets。若从其他签名构建切换，Android 可能拒绝覆盖安装，此时先备份数据，再处理旧版安装。
+
+## 后端状态
+
+V0.1 无需 Supabase 或大模型配置；没有家庭云同步。后端阶段会另行配置项目地址、公开客户端键、服务端模型密钥、RLS 与部署验证。不要把 service_role 或模型密钥写入 Android 工程。
