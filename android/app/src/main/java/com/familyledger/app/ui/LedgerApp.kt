@@ -73,7 +73,7 @@ import java.time.YearMonth
         },
         floatingActionButton = {
             if (tab == 0 && !state.loading) ExtendedFloatingActionButton(
-                onClick = { editorKey = "new" }, icon = { Icon(Icons.Outlined.Add, null) }, text = { Text("记一笔") })
+                onClick = { editorKey = "new" }, icon = { Icon(Icons.Outlined.Add, "记一笔") }, text = { Text("记一笔") })
         }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
