@@ -1,6 +1,6 @@
 # 验证记录
 
-日期：2026-09-05。
+日期：2026-09-06（北京时间）。
 
 | 验证 | 状态 | 证据或边界 |
 |---|---|---|
@@ -9,13 +9,32 @@
 | 核心 Kotlin 测试绿灯 | 已执行 | Kotlin 2.1.20 + Java 17 + JUnit 4.13.2，10 项通过 |
 | 审查修复回归 | 已执行 | 缺失删除标记测试先失败后通过；严格 JSON 字段类型；保存事件改由当前界面消费 |
 | 独立代码审查 | 已执行 | 两项 P2 已修复并复核；不替代 Android 编译 |
-| 配置与源码包检查 | 已执行 | Android XML、Actions YAML 解析；源码 ZIP 完整性；41 文件白名单 |
-| Android 全量编译和 lint | 待执行 | 需要有权上传的 GitHub 仓库以运行 Actions |
-| Room 与 UI 模拟器测试 | 已编写，未执行 | Actions 手动勾选 device_tests |
-| 真机安装、重启、备份恢复 | 未执行 | 需生成 APK 后手机验收 |
+| 配置与源码包检查 | 已执行 | Android XML、Actions YAML 解析；源码 ZIP 完整性；按明确白名单打包 |
+| Android 全量编译和 lint | 已通过 | Actions 33976880394；10 项 JVM 测试通过；lint 0 错误、12 提示；APK 上传成功 |
+| Room 与 UI 模拟器测试 | 已通过 | 同一 Actions 运行；API 35 模拟器 5 项通过，0 失败、0 跳过 |
+| 真机安装、重启、备份恢复 | 未执行 | APK 已生成并下载，仍需手机验收 |
 | AI、语音、Excel 导入、家庭云同步 | 未实现 | 后续阶段 |
 
 本地核心验证复用电脑现有 Java，临时 Kotlin 编译器位于被忽略的 `.tools` 中，不修改系统环境。该测试仅编译 domain/BackupCodec，不等于 Android App 编译成功。
+
+## 云端构建证据
+
+- 私有仓库：https://github.com/amateurish-programmer/ai-family-ledger
+- 成功构建：https://github.com/amateurish-programmer/ai-family-ledger/actions/runs/33976880394
+- APK 所属提交：`08f139276e0ef7fbbb6ebe7c86fdee98955f4570`。
+- APK Artifact：`AI-Family-Ledger-debug-9`（ID `9972607578`）；本地交付路径 `dist/apk/app-debug.apk`。
+- APK 大小：17,418,043 字节；SHA-256：`18981043413044BCBECEFF050FD0DC123FA2EF81F3A50A00FAC5C1CF9232FF61`。下载后 ZIP 完整性与必需 APK 文件检查通过。
+- 首次构建失败原因为 API 26 主题使用了 API 27 的 windowLightNavigationBar。已改为 values-v27 资源覆盖，再次构建通过。
+- Lint 不阻断的提示包括较新的依赖版本、目标 Android 版本和 dataExtractionRules 配置建议；本轮不升级整套依赖。
+- 构建生成的 Room V1 schema 已保存到 android/app/schemas，供后续迁移使用。
+
+## 模拟器证据与修复
+
+- 4 项数据层测试通过：编辑后的记录跨数据库实例保存、恢复重复 ID 跳过且不复活软删除记录、错误恢复不部分写入、Android JSON 字段类型严格检查。
+- 1 项 UI 测试通过：启动真实 MainActivity，点击「记一笔」，输入 36.80 元并保存，确认流水金额，进入报表并检查「支出去向」。
+- 首次 UI 等待失败的诊断显示 Activity 为 RESUMED、空账本和按钮已显示，按钮文本被 Material3 的内部语义清除；给加号图标补充「记一笔」无障碍名称，并按内容描述验证点击后通过。
+- 模拟器报告：`Android-device-tests-9`；录入截图：`diagnostics/ledger-screens/ledger-recorded.png`，本地副本为 `dist/validation/ledger-recorded.png`。截图使用测试夹具，不包含真实历史账目。
+- 模拟器 API 35 通过不代表 API 26 真机已验收；文件选择器、设备重启、旋转和大字体仍按下面清单在手机上验证。
 
 ## 手机验收清单
 
