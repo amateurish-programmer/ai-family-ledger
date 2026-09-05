@@ -2,7 +2,9 @@
 
 面向 Android 的家庭记账 App，采用 Kotlin + Jetpack Compose + Room。先交付可独立使用的本地账本，再接入历史 Excel、AI 语音和家庭云同步。
 
-## V0.1.0 已实现的源码功能
+[GitHub 仓库](https://github.com/amateurish-programmer/ai-family-ledger) · [APK 构建与下载](https://github.com/amateurish-programmer/ai-family-ledger/actions/workflows/android-ci.yml)
+
+## V0.1.0 功能
 
 - 收入/支出新增、编辑、删除，关机重启后仍由 Room 保存。
 - 日期、两级分类、账户、归属成员、记账人、商家、项目、备注。
@@ -14,7 +16,7 @@
 
 ## 不安装 Android Studio，获取 APK
 
-将本工程源码上传到自己的 GitHub 仓库，打开 **Actions → Android APK → Run workflow**。构建成功后下载 `AI-Family-Ledger-debug-运行序号`，解压并安装 `app-debug.apk`。
+仓库已创建并配置云端构建。打开上方 **APK 构建与下载 → Run workflow**，保留 main 分支并启动。构建成功后打开该次运行，在 Artifacts 下载 `AI-Family-Ledger-debug-运行序号`，解压并安装 `app-debug.apk`。勾选 `device_tests` 可同时运行 Android 模拟器测试。
 
 详细步骤见 [云端构建指南](docs/CLOUD_BUILD.md)。首次安装从空账本开始，不包含用户真实历史数据。
 
