@@ -3,6 +3,9 @@ package com.familyledger.app.ui
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import com.familyledger.app.MainActivity
+import androidx.test.platform.app.InstrumentationRegistry
+import android.graphics.Bitmap
+import java.io.File
 import org.junit.*
 
 class LedgerUiTest {
@@ -15,6 +18,7 @@ class LedgerUiTest {
         compose.onNodeWithText("保存记录").performClick()
         awaitText("−36.80")
         compose.onNodeWithText("−36.80").assertIsDisplayed()
+        screenshot("ledger-recorded.png")
         compose.onNodeWithText("报表").performClick()
         compose.onNodeWithText("支出去向").assertExists()
     }
@@ -22,9 +26,19 @@ class LedgerUiTest {
     private fun awaitText(text: String) {
         try {
             compose.waitUntil(15000) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
-        } catch (failure: Exception) {
+        } catch (failure: Throwable) {
+            screenshot("ui-failure.png")
             throw AssertionError("Missing UI text: $text; activity=${compose.activity.lifecycle.currentState}\n" +
                 compose.onRoot(useUnmergedTree = true).printToString(), failure)
+        }
+    }
+
+    private fun screenshot(name: String) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val folder = File(instrumentation.targetContext.getExternalFilesDir(null), "screenshots").apply { mkdirs() }
+        instrumentation.uiAutomation.takeScreenshot()?.let { bitmap ->
+            File(folder, name).outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
         }
     }
 }
