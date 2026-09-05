@@ -4,16 +4,15 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import com.familyledger.app.MainActivity
 import androidx.test.platform.app.InstrumentationRegistry
-import android.graphics.Bitmap
-import java.io.File
+import android.os.ParcelFileDescriptor
 import org.junit.*
 
 class LedgerUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
     @Test fun recordExpenseAndSeeItInLedger() {
-        awaitText("记一笔")
-        compose.onNodeWithText("记一笔").performClick()
+        awaitNode(hasContentDescription("记一笔"))
+        compose.onNodeWithContentDescription("记一笔").assertHasClickAction().performClick()
         compose.onNodeWithText("金额（元）").performTextInput("36.80")
         compose.onNodeWithText("保存记录").performClick()
         awaitText("−36.80")
@@ -24,21 +23,25 @@ class LedgerUiTest {
     }
 
     private fun awaitText(text: String) {
+        awaitNode(hasText(text))
+    }
+
+    private fun awaitNode(matcher: SemanticsMatcher) {
         try {
-            compose.waitUntil(15000) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(15000) { compose.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty() }
         } catch (failure: Throwable) {
             screenshot("ui-failure.png")
-            throw AssertionError("Missing UI text: $text; activity=${compose.activity.lifecycle.currentState}\n" +
+            throw AssertionError("Missing UI node: $matcher; activity=${compose.activity.lifecycle.currentState}\n" +
                 compose.onRoot(useUnmergedTree = true).printToString(), failure)
         }
     }
 
     private fun screenshot(name: String) {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val folder = File(instrumentation.targetContext.getExternalFilesDir(null), "screenshots").apply { mkdirs() }
-        instrumentation.uiAutomation.takeScreenshot()?.let { bitmap ->
-            File(folder, name).outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            bitmap.recycle()
+        // UTP uninstalls the app after testing; shell-owned captures survive until CI pulls them.
+        require(name.matches(Regex("[a-z-]+\\.png")))
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        automation.executeShellCommand("screencap -p /data/local/tmp/ledger-screens/$name").let { descriptor ->
+            ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { it.readBytes() }
         }
     }
 }
