@@ -44,12 +44,13 @@ import java.util.UUID
                 Button(onClick = {
                     try {
                         val entry = validateEntry(LedgerEntry(id = id, type = EntryType.valueOf(typeName),
-                            occurredOn = validateDate(date.trim()), amountMinor = Money.parse(amount), categoryL1 = category,
+                            occurredOn = validateDate(date.trim()), amountMinor = if (typeName == EntryType.BALANCE_ADJUSTMENT.name) java.math.BigDecimal(amount.trim()).movePointRight(2).longValueExact() else Money.parse(amount), categoryL1 = category,
                             categoryL2 = subcategory, account = account, member = member, recordedBy = recorder,
-                            merchant = merchant, project = project, note = note))
+                            merchant = merchant, project = project, note = note, origin = existing?.origin))
                         error = null
                         onSave(entry)
-                    } catch (e: IllegalArgumentException) { error = e.message }
+                    } catch (e: ArithmeticException) { error = "金额超出范围或超过两位小数" }
+                    catch (e: IllegalArgumentException) { error = e.message }
                 }, enabled = !busy, modifier = Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(16.dp).height(52.dp)) {
                     Text(if (busy) "正在保存…" else "保存记录")
                 }
@@ -67,6 +68,11 @@ import java.util.UUID
                 }
             }
             if (typeName == EntryType.BALANCE_ADJUSTMENT.name) Text("余额调整不参与收支统计")
+            existing?.origin?.let { origin ->
+                Text("来源：${origin.fileName} · ${origin.sheet} 第 ${origin.rowNumber} 行\n原始时间：${origin.originalDate}", style = MaterialTheme.typography.bodySmall)
+                if (origin.account2.isNotEmpty()) Text("账户2：${origin.account2}", style = MaterialTheme.typography.bodySmall)
+                if (origin.projectCategory.isNotEmpty()) Text("项目分类：${origin.projectCategory}", style = MaterialTheme.typography.bodySmall)
+            }
             OutlinedTextField(amount, { amount = it }, label = { Text("金额（元）") }, prefix = { Text("¥ ") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true,
                 enabled = !busy, modifier = Modifier.fillMaxWidth())

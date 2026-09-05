@@ -1,0 +1,6 @@
+project_id = "ai-family-ledger"
+
+[functions.ledger-ai]
+# Auth is verified against /auth/v1/user inside the function. This also supports
+# projects using asymmetric JWT signing; never remove the in-function check.
+verify_jwt = false

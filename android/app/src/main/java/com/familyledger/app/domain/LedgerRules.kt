@@ -20,7 +20,8 @@ data class LedgerEntry(
     val note: String = "",
     val currency: String = "CNY",
     val updatedAt: Long = System.currentTimeMillis(),
-    val deletedAt: Long? = null
+    val deletedAt: Long? = null,
+    val origin: ImportOrigin? = null
 )
 
 data class CategoryTotal(val name: String, val amount: Long)
@@ -51,7 +52,7 @@ fun validateDate(text: String): String {
 fun validateEntry(entry: LedgerEntry): LedgerEntry {
     validateDate(entry.occurredOn)
     require(entry.currency == "CNY") { "当前仅支持人民币 CNY" }
-    require(entry.amountMinor in 1..Money.MAX_MINOR) { "金额超出允许范围" }
+    require(entry.amountMinor in (if (entry.type == EntryType.BALANCE_ADJUSTMENT) -Money.MAX_MINOR else 1L)..Money.MAX_MINOR) { "金额超出允许范围" }
     listOf(entry.categoryL1, entry.account, entry.member, entry.recordedBy).forEach {
         require(it.isNotBlank()) { "分类、账户、成员和记账人不能为空" }
     }
@@ -60,6 +61,12 @@ fun validateEntry(entry: LedgerEntry): LedgerEntry {
     }
     require(entry.note.length <= 2000) { "备注不得超过 2000 个字符" }
     require(entry.updatedAt >= 0 && (entry.deletedAt == null || entry.deletedAt >= 0)) { "备份时间无效" }
+    entry.origin?.let { origin ->
+        require(Regex("[0-9a-f]{64}").matches(origin.fileHash) && origin.rowNumber in 1..10001 && origin.importedAt >= 0) { "导入来源无效" }
+        require(origin.fileName.length <= 255 && origin.sheet.length <= 100 && origin.originalDate.length <= 100) { "导入来源过长" }
+        require(origin.account2.length <= 100 && origin.projectCategory.length <= 100 && origin.rawFields.size <= 64) { "导入字段过长" }
+        require(origin.rawFields.all { it.key.length <= 100 && it.value.length <= 10000 }) { "原始字段过长" }
+    }
     return entry.copy(categoryL1 = entry.categoryL1.trim(), categoryL2 = entry.categoryL2.trim(),
         account = entry.account.trim(), member = entry.member.trim(), recordedBy = entry.recordedBy.trim(),
         merchant = entry.merchant.trim(), project = entry.project.trim(), note = entry.note.trim())

@@ -1,0 +1,59 @@
+# 家庭云同步与 AI 服务配置
+
+本目录交付 Supabase SQL 迁移、Edge Function 和 Android 客户端源码。尚未创建或部署实际云服务，未进行本轮编译、测试、设备、权限隔离或云端验收；已有旧版本验证不覆盖这些新增功能。没有请求、保存或提交任何真实生产密钥。
+
+## 部署步骤
+
+1. 在自己的 Supabase 账户建立独立项目，启用 Email/Password Auth，并按需要保留邮箱验证。客户端注册后须按邮件完成验证；配置邮件发送与 Auth 限流。
+2. 使用 Supabase SQL Editor 执行 `supabase/migrations/202609060001_family_cloud.sql`，或者通过 Supabase CLI 关联自己的项目并执行数据库迁移。脚本按首次新建表设计；后续修改应新增迁移，不能删表重建生产账本。
+3. 通过 Dashboard 的 Edge Function Secrets 或自己的本地安全环境配置 `OPENAI_API_KEY`、`OPENAI_MODEL`，可选 `OPENAI_BASE_URL`（默认 `https://api.openai.com/v1`，必须是支持 Chat Completions / JSON object 输出的 HTTPS 服务根路径）。例如供应商根地址为 `https://api.example.com/v1`，函数自行追加 `/chat/completions`。不要把这些值写入仓库或 Android。Supabase 自动提供 `SUPABASE_URL`、`SUPABASE_ANON_KEY`、`SUPABASE_SERVICE_ROLE_KEY`。
+4. 部署 `supabase/functions/ledger-ai`。`supabase/config.toml` 对该函数配置 `verify_jwt=false`，函数内部仍强制向 Auth 服务验证用户，并检查家庭成员关系，不能删除此校验。无需把 service_role 配置到手机。
+5. Android 设置页输入项目根 URL 与公开 anon / publishable key。只允许 `https://项目标识.supabase.co`，暂不支持自定义域、localhost、自托管、显式端口、路径或重定向。首次登录后创建家庭，家庭创建者生成邀请码，其他账号登录后输入邀请码加入。
+
+官方配置参考：[Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security)、[Edge Function Auth](https://supabase.com/docs/guides/functions/auth)。这里只提供可部署代码和步骤，不代表上述操作已执行。
+
+## 数据、身份与权限
+
+- `families`、`family_members`、`ledger_entries` 均启用 RLS。客户端仅可读取自己的家庭；所有写操作通过明确授权的安全 RPC。`ledger_private` 保存邀请哈希和 AI 配额，不暴露账目写权限。
+- `ledger_entries` 以 `(family_id,id)` 为主键，`payload` 是完整的 `BackupCodec.encode(listOf(entry))` V2 文本，保留整数分、软删除、导入来源；服务端验证单条 UUID、格式、金额范围、日期、必填字段、类型、来源和大小。`revision` 从服务端递增，`actor` 强制为 `auth.uid()`；业务上的成员/记账人标签不作为权限身份。
+- 同步只在用户明确选择后上传本机账目及已导入的来源字段，不读取或上传原始 XLSX 文件。完整导入来源可能含文件名、原始列值，因此同步确认范围包括这些信息。AI 不读取 XLSX，也不会自动读取所有明细；解析发送用户输入文字，报告仅发送客户端已经汇总的统计。
+- 一个 Auth 账号在本版本只能属于一个家庭；创建或加入成功后，客户端永久绑定项目、账号与家庭。再次登录其他账号或切到其他家庭会被拒绝，退出不会解除绑定。更换家庭必须先导出完整备份并使用独立应用数据；不要将旧家庭备份导入另一个家庭后误点同步。服务端 `get_my_family` 可恢复因创建/加入响应丢失而未写到手机的家庭归属。
+- 登录后尚未读到成员关系，或创建/加入请求发出后响应丢失时，客户端保存“待确认归属账号”锁，退出也不清除。必须用同账号重新登录并恢复归属，防止超时请求在服务端成功后换账号误传；创建/加入失败可用同账号重新尝试。仅一次普通登录确认无家庭、且从未发出创建/加入请求时可以解除待确认锁。
+- access/refresh token、账号邮箱和家庭绑定使用 Android Keystore AES-256-GCM 加密。普通 Preferences 只保存项目 URL、公开 key、同步 revision/hash 和用户自动同步开关。密钥不可导出；密文不可解密时云操作失败关闭，不能重置绑定后继续上传。
+- 退出立即移除本机 token，并在 IO 后台尝试撤销当前服务端会话；断网时无法保证远端立即撤销。退出仍保留本机账本、家庭绑定和同步索引。设备数据/应用备份必须保持禁用或排除云凭据，不能跨设备迁移 Keystore 密文。
+
+## RPC 合同
+
+| RPC | 请求 | 返回/限制 |
+|---|---|---|
+| `get_my_family` | `{}` | `null` 或 `{id,name}`；仅当前认证用户 |
+| `create_family` | `{p_name}` | `{id,name}`；网络重试恢复已有家庭 |
+| `create_invite` | `{}` | 64 位十六进制随机码；仅 owner，24 小时到期，一次性消费，最多十个有效待用邀请，仅 SHA-256 入库 |
+| `join_family` | `{p_code}` | `{id,name}`；原子消费邀请，已有家庭原样返回，不能通过此接口换家庭 |
+| `put_ledger_entry` | `{p_family,p_id,p_payload,p_expected_revision}` | 成功 `{ok:true,revision}`；冲突 `{ok:false,revision,payload}`；0 表示只允许新增 |
+| `consume_ai_quota` | `{p_user}` | boolean；仅 service_role 可执行，仅用于已验证用户的 AI 配额 |
+
+全部函数固定空 `search_path`，显式指定表与自定义函数 schema，撤销默认公开执行权；只向 authenticated 授予必要 RPC，向 service_role 单独授予配额 RPC。客户端无直接 INSERT/UPDATE/DELETE 授权，不能改成员、邀请、actor 或 revision。
+
+## 同步与冲突
+
+Android `CloudService` 使用 `HttpURLConnection`、`org.json` 和 IO 协程，无新增网络 SDK。手动同步先检查当前成员关系，按 UUID 游标每页十条拉取，再逐条执行同步；软删除必须一同上传下载，不能物理过滤掉删除项。单条 payload 上限 768 KiB，整个同步快照限 10 MiB / 十万条，HTTP 响应限 12 MiB；超限停止并明确报错。
+
+同步索引只保存上次成功同步的服务端 revision 与规范 JSON 的 SHA-256。两边内容相同更新索引；只有远端变更则落地；只有本机变更则按 revision CAS 上传；两边都变更或从未同步过的同 ID 内容不同则保留双方冲突。下载只有 `applyRemote` 持久化成功后记索引，上传只在服务端确认后记索引，失败不清索引。网络写成功但响应丢失可在下次同步由内容相同恢复；已同步记录从服务端消失会停止，避免静默重建。
+
+冲突解决必须用户明确选择本机或云端；选择前再读取最新 revision，已变化则要求重新同步，不覆盖新修改。调用方在同步/解决冲突期间须锁住本机编辑、导入、恢复等写入，保证传入 local 快照有效。每次同步不是跨全家庭的全量数据库快照，也不是跨网络的事务：并发设备刚新增或再次编辑的记录可能到下次同步再出现；出错前已成功的单条操作保留，未完成操作可重试。
+
+默认不自动同步。用户明确开启“打开 App 时同步”后由应用前台生命周期触发；这不是后台常驻、定时服务或实时订阅。关闭开关不删除已上传数据。
+
+## AI 接口
+
+`POST /functions/v1/ledger-ai`，携带有效用户 `Authorization: Bearer ...` 与公开 `apikey`，JSON 请求 `{operation,input}`。成功统一返回 `{result:string}`，失败返回适当 HTTP 状态和简短 `{error}`，不返回上游原始错误/账目内容，不记录请求或供应商响应日志。
+
+- `parse` 输入 `{text,today}`，`today` 为 `YYYY-MM-DD`；结果 `result` 是 JSON 字符串，严格结构为 `{"entries":[{"type":"EXPENSE","amount":"36.80","date":"2026-09-06","category":"食品酒水","subcategory":"午餐","account":"银行卡","member":"本人","recordedBy":"本人","merchant":"","project":"","note":"原文"}]}`。最多二十条、所有字段为文本，type 仅收入/支出，金额为十进制元字符串。模型只生成提案，客户端仍做金额/日期校验并经用户编辑确认才入账。
+- `report` 输入 `{period,income,expense,balance,categories:[{name,amount}],members:[{name,amount}],trend:[{period,income,expense}]}`；所有金额必须为客户端以整数分计算后格式化的字符串。函数不合计报告金额；模型只给定性解释。`result` 为中文纯文本，禁止出现数值以避免引入模型计算的总额，具体金额继续显示客户端确定性图表。
+- 请求限制 32 KiB，解析原文最多六千字符。供应商调用超时二十五秒，最大输出 2500 tokens，响应上限 128 KiB；不自动重试供应商以免重复计费。Supabase Auth/数据库请求各限十秒；所有 fetch 禁止重定向。
+- 数据库原子限流：单用户每分钟五次、每天三十次，整个项目每分钟三十次、每天三百次。按 UTC 分钟/日期计数，包括失败尝试；已到全局限制的请求不调用供应商。应另外在供应商控制台设置预算和告警，服务端限流不等于供应商金额账单保证。额度策略属于代码配置，不能由手机覆盖。
+
+## 待验收边界
+
+本轮遵照用户要求不运行新增验证或部署。正式使用真实家庭数据前仍需单独验收：SQL 迁移、成员/非成员/匿名 RLS、邀请并发消费与过期、CAS 同时编辑与删除、离线重试、登录刷新/退出、跨家庭拒绝、应用重启后 Keystore 解密、设备前台自动同步、AI 配额及真实供应商兼容。没有实测结果的项目不能宣称已通过。

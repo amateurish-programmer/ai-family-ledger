@@ -17,8 +17,9 @@ object BackupCodec {
             put("account", e.account); put("member", e.member); put("recordedBy", e.recordedBy)
             put("merchant", e.merchant); put("project", e.project); put("note", e.note)
             put("updatedAt", e.updatedAt); put("deletedAt", e.deletedAt ?: JSONObject.NULL)
+            put("origin", e.origin?.let { JSONObject(ImportOriginCodec.encode(it)) } ?: JSONObject.NULL)
         }) }
-        val text = JSONObject().put("format", "family-ledger").put("version", 1).put("entries", rows).toString()
+        val text = JSONObject().put("format", "family-ledger").put("version", 2).put("entries", rows).toString()
         require(text.toByteArray(Charsets.UTF_8).size <= MAX_BYTES) { "备份超过 10 MB 上限" }
         return text
     }
@@ -27,7 +28,8 @@ object BackupCodec {
         require(text.toByteArray(Charsets.UTF_8).size <= MAX_BYTES) { "备份超过 10 MB 上限" }
         try {
             val root = JSONObject(text)
-            require(string(root, "format") == "family-ledger" && integer(root, "version") == 1L) { "不支持的备份格式或版本" }
+            val version = integer(root, "version")
+            require(string(root, "format") == "family-ledger" && version in 1L..2L) { "不支持的备份格式或版本" }
             val rows = root.getJSONArray("entries")
             require(rows.length() <= 100000) { "备份记录过多" }
             val seen = hashSetOf<String>()
@@ -37,11 +39,15 @@ object BackupCodec {
                 require(UUID.fromString(id).toString() == id && seen.add(id)) { "备份包含无效或重复记录 ID" }
                 require(r.has("deletedAt")) { "备份缺少删除标记，无法安全恢复" }
                 validateEntry(LedgerEntry(id, EntryType.valueOf(string(r, "type")),
-                    string(r, "occurredOn"), integer(r, "amountMinor"),
+                    string(r, "occurredOn"), integer(r, "amountMinor", signed = true),
                     string(r, "categoryL1"), string(r, "categoryL2"), string(r, "account"),
                     string(r, "member"), string(r, "recordedBy"), string(r, "merchant"),
                     string(r, "project"), string(r, "note"), string(r, "currency"),
-                    integer(r, "updatedAt"), if (r.isNull("deletedAt")) null else integer(r, "deletedAt")))
+                    integer(r, "updatedAt"), if (r.isNull("deletedAt")) null else integer(r, "deletedAt"),
+                    if (version == 1L) null else {
+                        require(r.has("origin")) { "备份缺少导入来源字段" }
+                        if (r.isNull("origin")) null else ImportOriginCodec.decode(r.getJSONObject("origin").toString())
+                    }))
             }
         } catch (e: IllegalArgumentException) { throw e
         } catch (_: Exception) { throw IllegalArgumentException("备份损坏或字段缺失，未恢复任何记录") }
@@ -50,9 +56,9 @@ object BackupCodec {
     private fun string(row: JSONObject, key: String): String =
         row.get(key) as? String ?: throw IllegalArgumentException("$key 必须为文本")
 
-    private fun integer(row: JSONObject, key: String): Long {
+    private fun integer(row: JSONObject, key: String, signed: Boolean = false): Long {
         val raw = row.get(key)
-        require(raw is Number && Regex("[0-9]+").matches(raw.toString())) { "$key 必须为非负整数" }
+        require(raw is Number && Regex(if (signed) "-?[0-9]+" else "[0-9]+").matches(raw.toString())) { "$key 必须为整数" }
         return raw.toString().toLongOrNull() ?: throw IllegalArgumentException("$key 超出范围")
     }
 }

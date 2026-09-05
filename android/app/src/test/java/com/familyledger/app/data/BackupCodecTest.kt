@@ -23,7 +23,7 @@ class BackupCodecTest {
 
     @Test fun futureSchemaAndWrongCurrencyAreRejected() {
         val json = BackupCodec.encode(listOf(entry))
-        assertThrows(IllegalArgumentException::class.java) { BackupCodec.decode(json.replace("\"version\":1", "\"version\":99")) }
+        assertThrows(IllegalArgumentException::class.java) { BackupCodec.decode(json.replace("\"version\":2", "\"version\":99")) }
         assertThrows(IllegalArgumentException::class.java) { BackupCodec.decode(json.replace("CNY", "USD")) }
     }
 

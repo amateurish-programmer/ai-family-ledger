@@ -17,7 +17,7 @@ class MainActivity : ComponentActivity() {
             val model: LedgerViewModel = viewModel(factory = object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                    LedgerViewModel((application as LedgerApplication).repository) as T
+                    LedgerViewModel((application as LedgerApplication).repository, (application as LedgerApplication).cloud) as T
             })
             FamilyLedgerTheme { LedgerApp(model) }
         }

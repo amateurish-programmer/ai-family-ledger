@@ -7,6 +7,10 @@ on:
     paths: ['android/**', '.github/workflows/android-ci.yml']
   workflow_dispatch:
     inputs:
+      build_only:
+        description: 'Only compile APK; skip test and lint execution'
+        type: boolean
+        default: false
       device_tests:
         description: 'Run emulator persistence and UI tests'
         type: boolean
@@ -35,7 +39,11 @@ jobs:
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
       - name: Test, lint and build
+        if: ${{ !inputs.build_only }}
         run: bash ./gradlew testDebugUnitTest lintDebug assembleDebug --stacktrace
+      - name: Build APK only
+        if: ${{ inputs.build_only }}
+        run: bash ./gradlew assembleDebug --stacktrace
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
         with:

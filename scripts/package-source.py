@@ -5,9 +5,9 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 ROOT_FILES = ["README.md", "AGENTS.md", ".gitignore", ".gitattributes"]
-TREES = ["android", "docs", "scripts", ".github"]
+TREES = ["android", "docs", "scripts", ".github", "supabase"]
 EXCLUDED_PARTS = {"build", ".gradle", "__pycache__", ".idea"}
-ALLOWED_SUFFIXES = {".kt", ".kts", ".xml", ".md", ".yml", ".yaml", ".properties", ".ps1", ".py", ".json", ".sh"}
+ALLOWED_SUFFIXES = {".kt", ".kts", ".xml", ".md", ".yml", ".yaml", ".properties", ".ps1", ".py", ".json", ".sh", ".sql", ".ts", ".toml"}
 EXACT_BINARY = {"android/gradle/wrapper/gradle-wrapper.jar", "android/keystore/dev-debug.jks"}
 EXACT_SCRIPTS = {"android/gradlew", "android/gradlew.bat"}
 
@@ -32,7 +32,7 @@ if __name__ == "__main__":
     assert not any(name.endswith((".xlsx", ".xls", ".csv", ".ledger.json")) for name in names)
     out = ROOT / "dist"
     out.mkdir(exist_ok=True)
-    archive = out / "ai-family-ledger-v0.1.0-source.zip"
+    archive = out / "ai-family-ledger-v0.5.0-source.zip"
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as z:
         for file, name in zip(files, names):
             z.write(file, name)

@@ -26,6 +26,15 @@ import java.time.YearMonth
     var editorKey by rememberSaveable { mutableStateOf<String?>(null) }
     val snackbar = remember { SnackbarHostState() }
     val month = YearMonth.parse(monthText)
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle, model) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_START) model.onForeground()
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(state.loading) { if (!state.loading) model.onForeground() }
 
     LaunchedEffect(state.message) {
         state.message?.let { message -> snackbar.showSnackbar(message); model.clearMessage() }
@@ -37,6 +46,18 @@ import java.time.YearMonth
         }
     }
     val editor = editorKey
+    if (state.cloudOpen) {
+        CloudScreen(model, state, snackbar)
+        return
+    }
+    if (state.quickOpen) {
+        QuickEntryScreen(model, state, snackbar)
+        return
+    }
+    if (state.importPreview != null) {
+        ImportScreen(model, state, snackbar)
+        return
+    }
     if (editor != null) {
         val existing = state.entries.firstOrNull { it.id == editor }
         if (editor != "new" && existing == null) {
@@ -79,8 +100,8 @@ import java.time.YearMonth
         Column(Modifier.fillMaxSize().padding(padding)) {
             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             when (tab) {
-                0 -> LedgerScreen(state, month, { monthText = it.toString() }, { editorKey = it.id }, model::delete)
-                1 -> ReportsScreen(state.entries, month, { monthText = it.toString() })
+                0 -> LedgerScreen(state, month, { monthText = it.toString() }, { editorKey = it.id }, model::delete, model::openQuickEntry)
+                1 -> ReportsScreen(state.entries, month, { monthText = it.toString() }, model, state)
                 2 -> SettingsScreen(model, state)
             }
         }
@@ -88,7 +109,7 @@ import java.time.YearMonth
 }
 
 @Composable private fun LedgerScreen(state: LedgerState, month: YearMonth, onMonth: (YearMonth) -> Unit,
-    onEdit: (LedgerEntry) -> Unit, onDelete: (String) -> Unit) {
+    onEdit: (LedgerEntry) -> Unit, onDelete: (String) -> Unit, onQuick: () -> Unit) {
     val start = month.atDay(1)
     val end = month.plusMonths(1).atDay(1)
     val summary = remember(state.entries, month) { summarize(state.entries, start, end) }
@@ -99,7 +120,8 @@ import java.time.YearMonth
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 108.dp)) {
         item {
             Text("家庭账本", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-            Text("本机账本", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(state.cloudStatus?.familyName?.let { "$it · 本机副本" } ?: "本机账本", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedButton(onClick = onQuick, enabled = !state.loading && !state.busy, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) { Text("一句话 / 语音记账") }
             Spacer(Modifier.height(24.dp))
             PeriodSelector("${month.year} 年 ${month.monthValue} 月", { onMonth(month.minusMonths(1)) }, { onMonth(month.plusMonths(1)) })
             Spacer(Modifier.height(16.dp))
