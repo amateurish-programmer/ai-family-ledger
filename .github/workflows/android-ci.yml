@@ -54,7 +54,6 @@ jobs:
           retention-days: 14
   device-tests:
     if: github.event_name == 'workflow_dispatch' && inputs.device_tests
-    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -74,18 +73,7 @@ jobs:
           api-level: 35
           arch: x86_64
           disable-animations: true
-          script: |
-            adb shell settings put system screen_off_timeout 1800000
-            adb shell input keyevent KEYCODE_WAKEUP
-            adb shell wm dismiss-keyguard
-            cd android
-            set +e
-            bash ./gradlew connectedDebugAndroidTest --stacktrace
-            test_status=$?
-            mkdir -p app/build/reports/androidTests/diagnostics
-            adb logcat -d -s AndroidRuntime > app/build/reports/androidTests/diagnostics/runtime.log
-            adb pull /sdcard/Android/data/com.familyledger.app/files/screenshots app/build/reports/androidTests/diagnostics/ || true
-            exit "$test_status"
+          script: bash android/run-device-tests.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
