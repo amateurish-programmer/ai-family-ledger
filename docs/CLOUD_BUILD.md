@@ -2,6 +2,8 @@
 
 ## 首次上传
 
+当前私有仓库 [amateurish-programmer/ai-family-ledger](https://github.com/amateurish-programmer/ai-family-ledger) 已完成创建、源码上传和构建配置，可直接跳到「下载 APK」。下面步骤供迁移到其他仓库时参考。
+
 1. 登录自己使用的 GitHub 账号，创建私有仓库 `ai-family-ledger`。
 2. 把源码包解压后的内容放在仓库根目录。根目录须包含 `android`、`.github`、`docs` 和 `README.md`，不要多套一层目录。
 3. 使用 Git 客户端推送，或 GitHub 网页 `Add file → Upload files`。网页上传时需确保隐藏的 `.github` 目录也上传了。不要直接上传整个 ZIP，因为 Actions 不会自动解压。
@@ -19,7 +21,7 @@ Artifact 的网页下载需要登录有权访问该仓库的 GitHub 账号。构
 
 ## 验证开关
 
-手动 Run workflow 时可勾选 `device_tests`，额外启动 Android 35 模拟器，验证 Room 跨实例持久化、恢复幂等和录入 UI。该步骤耗时与 Actions 用量高于普通构建。
+手动 Run workflow 时可勾选 `device_tests`，额外启动 Android 35 模拟器，验证 Room 跨实例持久化、恢复幂等和录入 UI。设备测试与 APK 构建并行执行；该步骤耗时与 Actions 用量高于普通构建。测试报告保存在 `Android-device-tests-运行序号`，录入截图位于报告的 `diagnostics/ledger-screens` 目录。
 
 ## 签名
 
