@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ROOT_FILES = ["README.md", "AGENTS.md", ".gitignore", ".gitattributes"]
 TREES = ["android", "docs", "scripts", ".github"]
 EXCLUDED_PARTS = {"build", ".gradle", "__pycache__", ".idea"}
-ALLOWED_SUFFIXES = {".kt", ".kts", ".xml", ".md", ".yml", ".yaml", ".properties", ".ps1", ".py", ".json"}
+ALLOWED_SUFFIXES = {".kt", ".kts", ".xml", ".md", ".yml", ".yaml", ".properties", ".ps1", ".py", ".json", ".sh"}
 EXACT_BINARY = {"android/gradle/wrapper/gradle-wrapper.jar", "android/keystore/dev-debug.jks"}
 EXACT_SCRIPTS = {"android/gradlew", "android/gradlew.bat"}
 
