@@ -6,7 +6,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 ROOT_FILES = ["README.md", "AGENTS.md", ".gitignore", ".gitattributes"]
 TREES = ["android", "docs", "scripts", ".github", "supabase"]
-EXCLUDED_PARTS = {"build", ".gradle", "__pycache__", ".idea"}
+EXCLUDED_PARTS = {"build", ".gradle", "__pycache__", ".idea", ".temp", ".branches"}
 ALLOWED_SUFFIXES = {".kt", ".kts", ".xml", ".md", ".yml", ".yaml", ".properties", ".ps1", ".py", ".json", ".sh", ".sql", ".ts", ".toml"}
 EXACT_BINARY = {"android/gradle/wrapper/gradle-wrapper.jar", "android/keystore/dev-debug.jks"}
 EXACT_SCRIPTS = {"android/gradlew", "android/gradlew.bat"}
@@ -18,7 +18,7 @@ def source_files():
             rel = file.relative_to(ROOT)
             if not file.is_file() or any(part in EXCLUDED_PARTS for part in rel.parts):
                 continue
-            if file.name == "local.properties":
+            if file.name == "local.properties" or file.name == ".env" or file.name.startswith(".env."):
                 continue
             if file.suffix in ALLOWED_SUFFIXES or rel.as_posix() in EXACT_BINARY | EXACT_SCRIPTS:
                 files.append(file)

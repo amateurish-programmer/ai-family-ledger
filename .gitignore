@@ -20,6 +20,8 @@ local.properties
 **/.gradle/
 **/build/
 .tools/
+supabase/.temp/
+supabase/.branches/
 dist/
 __pycache__/
 *.pyc
