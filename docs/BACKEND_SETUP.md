@@ -2,6 +2,9 @@
 
 2026-09-06 已部署到用户的 Supabase 项目“记账工具”：数据库迁移 `202609060001` 已应用，五张业务/私有表启用 RLS，`ledger-ai` Edge Function 已上线。模型配置为 DeepSeek `deepseek-v4-flash`，API Key 由用户在 Supabase Secrets 中保存，部署工具只确认名称存在，未读取密钥值。未进行手机、多账号同步或真实模型请求验收。Android 客户端已随 V0.5 APK 编译成功。
 
+
+V0.9 更新（2026-09-06）：迁移 `202609060003_family_profile.sql` 已部署，家庭创建者可修改名称及固定图标；`get_my_family` 增加 icon/is_owner，新增 `update_family_profile`。`ledger-ai` 已部署日周报告日期支持。用户已确认 Reset Password 模板保存验证码 `{{ .Token }}`；App 通过独立 recovery 会话重置，不改变本机账号绑定。实际邮件重置与跨设备刷新未实测，详见 [V0.9](V0.9.md) 和 [身份合同](IDENTITY_V0.9.md)。
+
 ## 当前项目与内置配置
 
 V0.7 已更新 `ledger-ai`，增加 `chat` 操作并兼容旧版 `parse`/`report`。输入为 `{text,today,role,history,members,categories}`，历史最多四条、成员/分类各最多四十项，总请求仍限 32 KiB；返回的 result 字符串包含 `{reply,entries,query}`。query 为 `{start,end,member,category,keyword}`，end 不包含。服务端不查询账目、也不执行账目改删，金额汇总由 Android 本机完成。普通 Preferences 新增按账号保存的本机角色，角色不授予任何权限。详见 [V0.7](V0.7.md)。

@@ -13,8 +13,8 @@
 
 1. 仓库 **Actions → Android APK**，首次上传 Android 文件会自动构建，也可 **Run workflow** 手动执行。
 2. 等待任务变绿；失败时展开红色步骤查看日志，不把排队或上传源码视为已构建。
-3. 在该次运行底部 **Artifacts** 下载 `AI-Family-Ledger-debug-运行序号`。
-4. 解压 ZIP，里面的 `app-debug.apk` 发到 Android 手机安装。
+3. 在该次运行底部 **Artifacts** 下载 `AI家庭账本-v版本号`（当前 `AI家庭账本-v0.9.0`）。
+4. 解压 ZIP，里面的 `AI家庭账本-v0.9.0.apk` 发到 Android 手机安装。
 5. 手机按提示允许本次安装来源。首次启动无演示数据，输入一笔收入和支出验证。
 
 Artifact 的网页下载需要登录有权访问该仓库的 GitHub 账号。构建产物保留 14 天，可重新构建。使用自带 Actions 配额；不需要配置付费运行器，具体用量以账号后台为准。
@@ -23,7 +23,7 @@ Artifact 的网页下载需要登录有权访问该仓库的 GitHub 账号。构
 
 手动 Run workflow 时可勾选 `device_tests`，额外启动 Android 35 模拟器，验证 Room 跨实例持久化、恢复幂等和录入 UI。设备测试与 APK 构建并行执行；该步骤耗时与 Actions 用量高于普通构建。测试报告保存在 `Android-device-tests-运行序号`，录入截图位于报告的 `diagnostics/ledger-screens` 目录。
 
-`build_only` 只运行 `assembleDebug`，跳过 JVM 测试和 lint；可同时勾选 auth_checks 运行重点行为测试；V0.8 使用 build_only、auth_checks 和 device_tests 生成 APK 与界面证据。不能把仅编译成功表述为功能验证通过。
+`build_only` 只运行 `assembleDebug`，跳过 JVM 测试和 lint；可同时勾选 `auth_checks` 运行全部 JVM 行为测试；V0.9 使用 build_only、auth_checks 和 device_tests 生成 APK 与界面证据。后端协议回归和隔离 PostgreSQL 权限测试始终运行。不能把仅编译成功表述为功能验证通过。
 
 ## 签名
 
@@ -31,4 +31,8 @@ Debug APK 使用项目内固定的公开开发签名，便于同包名版本覆�
 
 ## 后端状态
 
-V0.8 已内置公开云服务配置，登录并加入家庭即可对话。已保存账目查看和编辑无需网络。家庭同步/AI 服务源码在 supabase，实际部署与配置见 [BACKEND_SETUP.md](BACKEND_SETUP.md)。不要把 service_role 或模型密钥写入 Android 工程。没有后台配置时，离线记账、Excel、简单整理及确定性报告仍可使用。
+V0.9 已内置公开云服务配置，登录并加入家庭即可对话。已保存账目查看和编辑无需网络。家庭同步/AI 服务源码在 supabase，实际部署与配置见 [BACKEND_SETUP.md](BACKEND_SETUP.md)。不要把 service_role 或模型密钥写入 Android 工程。没有后台配置时，已保存账目编辑、Excel 和确定性报告仍可使用。
+
+## 版本发布约定
+
+每次升级更新 Gradle versionCode/versionName，按明确文件清单签名提交到仓库并触发构建。`scripts/name-apk.py` 从 versionName 自动生成安装包名，不生成 SHA-256 边车文件。正式名称不改变当前开发签名；覆盖安装保留本机数据，不要卸载旧版。
