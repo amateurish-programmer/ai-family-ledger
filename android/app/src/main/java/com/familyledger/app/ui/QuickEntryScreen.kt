@@ -78,7 +78,7 @@ import androidx.compose.ui.unit.dp
         }
     }
     if (cloudConfirm) AlertDialog(onDismissRequest = { cloudConfirm = false }, title = { Text("发送到云端 AI？") },
-        text = { Text("将发送当前输入内容给你配置的大模型服务。返回结果只作为待确认记录，确认后才入账。需先在设置中连接云端。") },
+        text = { Text("将发送当前输入内容给 DeepSeek 进行整理。返回结果只作为待确认记录，确认后才入账。请先登录并加入家庭。") },
         confirmButton = { TextButton(onClick = { cloudConfirm = false; model.parseQuick(text, true) }) { Text("发送并整理") } },
         dismissButton = { TextButton(onClick = { cloudConfirm = false }) { Text("取消") } })
 }

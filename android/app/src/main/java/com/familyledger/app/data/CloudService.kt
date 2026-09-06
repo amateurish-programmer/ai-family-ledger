@@ -45,6 +45,7 @@ class CloudService(context: Context) {
     }
 
     fun status(): CloudStatus = synchronized(stateGuard) {
+        ensureBuiltInConfiguration()
         val state = readState()
         CloudStatus(config.getString("url", null) != null && config.getString("anonKey", null) != null,
             if (state.has("access")) state.optString("email").ifBlank { null } else null,
@@ -56,7 +57,18 @@ class CloudService(context: Context) {
         check(config.edit().putBoolean("autoSync", enabled).commit()) { "无法保存自动同步选项" }
     }
 
-    fun configure(url: String, anonKey: String): Unit = synchronized(stateGuard) {
+    private fun ensureBuiltInConfiguration() {
+        val previous = config.getString("url", null)
+        val state = readState()
+        val hasIdentity = listOf("access", "user", "boundUser", "pendingUser", "familyId").any(state::has) ||
+            config.all.keys.any { it.startsWith("index:") }
+        CloudEndpoint.requireCompatible(previous, hasIdentity)
+        if (previous != CloudEndpoint.URL || config.getString("anonKey", null) != CloudEndpoint.PUBLIC_KEY) {
+            configure(CloudEndpoint.URL, CloudEndpoint.PUBLIC_KEY)
+        }
+    }
+
+    private fun configure(url: String, anonKey: String): Unit = synchronized(stateGuard) {
         val normalized = officialUrl(url)
         val key = anonKey.trim()
         require(key.length in 20..4096 && !key.any { it.isWhitespace() }) { "请输入 Supabase 的公开 anon / publishable key" }
@@ -207,7 +219,7 @@ class CloudService(context: Context) {
     private data class Index(val revision: Long, val hash: String)
 
     private suspend fun <T> operation(block: suspend (Long) -> T): T = withContext(Dispatchers.IO) {
-        operations.withLock { block(synchronized(stateGuard) { epoch }) }
+        operations.withLock { block(synchronized(stateGuard) { ensureBuiltInConfiguration(); epoch }) }
     }
 
     private fun pull(family: String, version: Long): Map<String, Remote> {
@@ -374,17 +386,7 @@ class CloudService(context: Context) {
             synchronized(stateGuard) { checkEpoch(version) }
             if (code !in 200..299) {
                 // Do not expose raw server errors, which may echo account/ledger content.
-                val error = runCatching { JSONObject(String(bytes, Charsets.UTF_8)) }.getOrNull()
-                val knownError = error?.let { item -> item.optString("error_code").ifBlank { item.optString("message") } }
-                val hint = when (knownError) {
-                    "invalid_credentials" -> "邮箱或密码不正确"
-                    "email_not_confirmed" -> "请先完成邮箱验证"
-                    "invalid_invite", "invalid_or_expired_invite" -> "邀请码不存在、已使用或已过期"
-                    "invite_limit" -> "有效待用邀请码已达十个，请先使用或等待到期"
-                    "owner_required" -> "只有家庭创建者可以生成邀请码"
-                    else -> when (code) { 401 -> "登录已失效，请重新登录"; 403 -> "账号无家庭权限或操作仅限家庭创建者"; 429 -> "请求过于频繁或 AI 今日额度已用完"; else -> "云端请求失败（HTTP $code），请检查配置、邮箱验证和服务端部署" }
-                }
-                throw HttpFailure(code, hint)
+                throw HttpFailure(code, CloudErrors.message(code, path, String(bytes, Charsets.UTF_8)))
             }
             return String(bytes, Charsets.UTF_8)
         } finally { connection.disconnect() }

@@ -18,8 +18,6 @@ import com.familyledger.app.domain.Money
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable fun CloudScreen(model: LedgerViewModel, state: LedgerState, snackbar: SnackbarHostState) {
     val status = state.cloudStatus
-    var url by rememberSaveable { mutableStateOf("") }
-    var key by remember { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var familyName by rememberSaveable { mutableStateOf("") }
@@ -34,12 +32,9 @@ import com.familyledger.app.domain.Money
     }) }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).imePadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            Text(if (status?.configured == true) "云端地址已配置" else "连接你的 Supabase 项目", style = MaterialTheme.typography.titleLarge)
-            Text("首次使用需部署仓库中的 supabase 文件；公开项目地址和客户端键填在这里，大模型密钥只放服务端。", style = MaterialTheme.typography.bodySmall)
-            OutlinedTextField(url, { url = it }, label = { Text("https://项目编号.supabase.co") }, singleLine = true, enabled = !state.busy, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(key, { key = it }, label = { Text("Publishable / anon key") }, singleLine = true, enabled = !state.busy, modifier = Modifier.fillMaxWidth())
-            OutlinedButton(onClick = { model.configureCloud(url, key); key = "" }, enabled = !state.busy && url.isNotBlank() && key.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("保存云端配置") }
-            HorizontalDivider()
+            Text("与家人共享账本", style = MaterialTheme.typography.titleLarge)
+            Text("登录后创建家庭，或使用家人的邀请码加入。同步前会由你确认。", style = MaterialTheme.typography.bodySmall)
+            if (status == null) Text("账号服务暂不可用，本机记账仍可使用。请查看错误提示后重试。")
             if (status?.email == null) {
                 Text("登录家庭账号", style = MaterialTheme.typography.titleLarge)
                 OutlinedTextField(email, { email = it }, label = { Text("邮箱") }, singleLine = true, enabled = !state.busy, modifier = Modifier.fillMaxWidth())

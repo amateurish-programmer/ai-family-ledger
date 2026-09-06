@@ -15,6 +15,10 @@ on:
         description: 'Run emulator persistence and UI tests'
         type: boolean
         default: false
+      auth_checks:
+        description: 'Run focused cloud configuration and auth error tests'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -44,6 +48,9 @@ jobs:
       - name: Build APK only
         if: ${{ inputs.build_only }}
         run: bash ./gradlew assembleDebug --stacktrace
+      - name: Check cloud configuration and auth errors
+        if: ${{ inputs.auth_checks && inputs.build_only }}
+        run: bash ./gradlew testDebugUnitTest --tests com.familyledger.app.data.CloudErrorsTest --stacktrace
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
         with:

@@ -53,7 +53,6 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
     private fun requireCloud() = cloud ?: error("云端组件未初始化")
     fun openCloud() { mutableState.update { it.copy(cloudOpen = true) }; refreshCloud() }
     fun closeCloud() { if (!state.value.busy) mutableState.update { it.copy(cloudOpen = false) } }
-    fun configureCloud(url: String, key: String) = perform { requireCloud().configure(url.trim(), key.trim()); refreshCloud(); mutableState.update { it.copy(message = "云端地址已保存") } }
     fun login(email: String, password: String, signup: Boolean) = perform {
         if (signup) { val message = requireCloud().signUp(email.trim(), password); mutableState.update { it.copy(message = message) } }
         else { requireCloud().login(email.trim(), password); mutableState.update { it.copy(message = "已登录") } }

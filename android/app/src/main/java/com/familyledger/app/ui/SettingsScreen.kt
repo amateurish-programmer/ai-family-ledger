@@ -29,7 +29,7 @@ import com.familyledger.app.domain.ImportBatch
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("账本设置", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
         Text("本机账本 · ${state.entries.size} 笔记录", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        OutlinedButton(onClick = model::openCloud, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("家庭登录、同步与 AI 配置") }
+        OutlinedButton(onClick = model::openCloud, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("家庭账号与同步") }
         Spacer(Modifier.height(8.dp))
         Text("历史账本", style = MaterialTheme.typography.titleLarge)
         Button(onClick = { importExcel.launch(arrayOf(XlsxCodec.MIME, "application/octet-stream")) }, enabled = !state.busy && !state.loading,
@@ -60,7 +60,7 @@ import com.familyledger.app.domain.ImportBatch
         Text("当前版本", style = MaterialTheme.typography.titleLarge)
         Text("V0.5.0 · 家庭账本")
         Text("手工/一句话/语音记账、Excel 导入导出、月报/年报、成员趋势与备份。")
-        Text("云端 AI 和家庭同步需先部署并配置 Supabase。未配置时仍可离线记账，语音识别是否可用由手机服务决定。",
+        Text("登录并加入家庭后，可使用家庭同步与 AI 整理。离线记账随时可用，语音识别由手机服务提供。",
             color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     rollback?.let { batch -> AlertDialog(onDismissRequest = { rollback = null }, title = { Text("撤销导入批次？") },

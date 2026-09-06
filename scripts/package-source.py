@@ -32,7 +32,7 @@ if __name__ == "__main__":
     assert not any(name.endswith((".xlsx", ".xls", ".csv", ".ledger.json")) for name in names)
     out = ROOT / "dist"
     out.mkdir(exist_ok=True)
-    archive = out / "ai-family-ledger-v0.5.0-source.zip"
+    archive = out / "ai-family-ledger-v0.6.0-source.zip"
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as z:
         for file, name in zip(files, names):
             z.write(file, name)
