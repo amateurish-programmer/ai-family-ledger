@@ -68,8 +68,8 @@ Android `CloudService` 使用 `HttpURLConnection`、`org.json` 和 IO 协程，�
 `POST /functions/v1/ledger-ai`，携带有效用户 `Authorization: Bearer ...` 与公开 `apikey`，JSON 请求 `{operation,input}`。成功统一返回 `{result:string}`，失败返回适当 HTTP 状态和简短 `{error}`，不返回上游原始错误/账目内容，不记录请求或供应商响应日志。
 
 - `parse` 输入 `{text,today}`，`today` 为 `YYYY-MM-DD`；结果 `result` 是 JSON 字符串，严格结构为 `{"entries":[{"type":"EXPENSE","amount":"36.80","date":"2026-09-06","category":"食品酒水","subcategory":"午餐","account":"银行卡","member":"本人","recordedBy":"本人","merchant":"","project":"","note":"原文"}]}`。最多二十条、所有字段为文本，type 仅收入/支出，金额为十进制元字符串。模型只生成提案，客户端仍做金额/日期校验并经用户编辑确认才入账。
-- `report` 输入 `{period,income,expense,balance,categories:[{name,amount}],members:[{name,amount}],trend:[{period,income,expense}]}`；所有金额必须为客户端以整数分计算后格式化的字符串。函数不合计报告金额；模型只给定性解释。`result` 为中文纯文本，禁止出现数值以避免引入模型计算的总额，具体金额继续显示客户端确定性图表。
-- 请求限制 32 KiB，解析原文最多六千字符。供应商调用超时二十五秒，最大输出 2500 tokens，响应上限 128 KiB；不自动重试供应商以免重复计费。Supabase Auth/数据库请求各限十秒；所有 fetch 禁止重定向。
+- `report` 输入 `{period,income,expense,balance,categories:[{name,amount}],members:[{name,amount}],trend:[{period,income,expense}]}`；所有金额必须为客户端以整数分计算后格式化的字符串。函数不合计报告金额；模型以定性解释为主，可引用原始汇总数值。2026-09-06 已修复“任意数字触发 502”：允许输入中的年月、行首序号与准确金额；未提供数值、百分比、无效格式或输出截断时明确返回基础摘要。认证、额度和网络故障仍报错。新增固定诊断事件，不记录请求或模型正文。详见 [报告修复记录](REPORT_AI_FIX.md)。
+- 请求限制 32 KiB，解析原文最多六千字符。供应商调用超时二十五秒，parse/report 最大输出 2500 tokens，chat 最大 4000 tokens，响应上限 128 KiB；不自动重试供应商以免重复计费。Supabase Auth/数据库请求各限十秒；所有 fetch 禁止重定向。
 - 数据库原子限流：单用户每分钟五次、每天三十次，整个项目每分钟三十次、每天三百次。按 UTC 分钟/日期计数，包括失败尝试；已到全局限制的请求不调用供应商。应另外在供应商控制台设置预算和告警，服务端限流不等于供应商金额账单保证。额度策略属于代码配置，不能由手机覆盖。
 
 ## 待验收边界
