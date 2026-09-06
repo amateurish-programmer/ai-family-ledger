@@ -37,6 +37,53 @@ class SpreadsheetImportTest {
         assertEquals(listOf(ImportStatus.NEW, ImportStatus.SUSPECTED), same.rows.map { it.status })
         assertNotEquals(same.rows[0].entry!!.id, same.rows[1].entry!!.id)
     }
+    @Test fun oldExportPlusSameDaySameAmountAtDifferentTimeSelectsOnlyNewTransaction() {
+        val old = SpreadsheetImport.preview(SampleWorkbooks.book(), "old.xlsx", emptyList()).rows.single().entry!!
+        val later = SampleWorkbooks.expense.toMutableList().apply { this[1] = "2026-09-06 18:30:01" }
+        val preview = SpreadsheetImport.preview(SampleWorkbooks.book(listOf(SampleWorkbooks.headers, SampleWorkbooks.expense, later)), "new.xlsx", listOf(old))
+        assertEquals(listOf(ImportStatus.SUSPECTED, ImportStatus.NEW), preview.rows.map { it.status })
+        assertEquals(3680L, preview.rows.single { it.status == ImportStatus.NEW }.entry!!.amountMinor)
+    }
+    @Test fun reorderingExportDoesNotTurnOldTransactionsIntoNewOnes() {
+        val later = SampleWorkbooks.expense.toMutableList().apply { this[1] = "2026-09-06 18:30:01" }
+        val original = SpreadsheetImport.preview(SampleWorkbooks.book(listOf(SampleWorkbooks.headers, SampleWorkbooks.expense, later)), "old.xlsx", emptyList())
+        assertEquals(listOf(ImportStatus.NEW, ImportStatus.NEW), original.rows.map { it.status })
+        val reordered = SpreadsheetImport.preview(SampleWorkbooks.book(listOf(SampleWorkbooks.headers, later, SampleWorkbooks.expense)), "sorted.xlsx", original.rows.mapNotNull { it.entry })
+        assertEquals(listOf(ImportStatus.SUSPECTED, ImportStatus.SUSPECTED), reordered.rows.map { it.status })
+    }
+    @Test fun sameTimestampWithDifferentSeparatorIsStillSuspected() {
+        val old = SpreadsheetImport.preview(SampleWorkbooks.book(), "old.xlsx", emptyList()).rows.single().entry!!
+        val equivalent = SampleWorkbooks.expense.toMutableList().apply { this[1] = "2026-09-06T12:30:01" }
+        assertEquals(ImportStatus.SUSPECTED, SpreadsheetImport.preview(SampleWorkbooks.book(listOf(SampleWorkbooks.headers, equivalent)), "new.xlsx", listOf(old)).rows.single().status)
+    }
+    @Test fun missingTimeOnEitherSideKeepsConservativeDuplicatePrompt() {
+        val knownTime = SpreadsheetImport.preview(SampleWorkbooks.book(), "known.xlsx", emptyList()).rows.single().entry!!
+        val dateOnly = SampleWorkbooks.expense.toMutableList().apply { this[1] = "2026-09-06" }
+        val bytes = SampleWorkbooks.book(listOf(SampleWorkbooks.headers, dateOnly))
+        val withoutTime = SpreadsheetImport.preview(bytes, "day.xlsx", emptyList()).rows.single().entry!!
+        assertEquals(ImportStatus.SUSPECTED, SpreadsheetImport.preview(bytes, "day.xlsx", listOf(knownTime)).rows.single().status)
+        assertEquals(ImportStatus.SUSPECTED, SpreadsheetImport.preview(SampleWorkbooks.book(), "known.xlsx", listOf(withoutTime)).rows.single().status)
+    }
+    @Test fun oldSourceRemainsSuspectedAfterLocalEditAndDeletion() {
+        val original = SpreadsheetImport.preview(SampleWorkbooks.book(), "old.xlsx", emptyList()).rows.single().entry!!
+        val edited = original.copy(amountMinor = 5000, note = "本地修正", occurredOn = "2026-09-07", deletedAt = 50)
+        val preview = SpreadsheetImport.preview(SampleWorkbooks.book(suffix = "new export"), "new.xlsx", listOf(edited))
+        assertEquals(ImportStatus.SUSPECTED, preview.rows.single().status)
+        assertEquals(5000L, edited.amountMinor)
+        assertEquals(50L, edited.deletedAt!!)
+    }
+    @Test fun sourceChangesAreNewCandidatesAndNeverOverwriteExistingIds() {
+        val original = SpreadsheetImport.preview(SampleWorkbooks.book(), "old.xlsx", emptyList()).rows.single().entry!!
+        val changed = SampleWorkbooks.expense.toMutableList().apply { this[6] = "40.00" }
+        val preview = SpreadsheetImport.preview(SampleWorkbooks.book(listOf(SampleWorkbooks.headers, changed)), "edited.xlsx", listOf(original))
+        assertEquals(ImportStatus.NEW, preview.rows.single().status)
+        assertNotEquals(original.id, preview.rows.single().entry!!.id)
+        assertEquals(3680L, original.amountMinor)
+        assertEquals(4000L, preview.rows.single().entry!!.amountMinor)
+        val removed = SpreadsheetImport.preview(SampleWorkbooks.book(listOf(SampleWorkbooks.headers)), "removed.xlsx", listOf(original))
+        assertTrue(removed.rows.isEmpty())
+        assertNull(original.deletedAt)
+    }
     @Test fun invalidDateCurrencyAndPrecisionAreVisibleErrors() {
         val rows = listOf(SampleWorkbooks.headers) + listOf(1 to "2026-02-30", 5 to "USD", 6 to "36.801").map { (index, value) ->
             SampleWorkbooks.expense.toMutableList().apply { this[index] = value }

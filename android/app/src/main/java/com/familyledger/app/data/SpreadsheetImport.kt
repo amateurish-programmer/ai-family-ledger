@@ -16,7 +16,7 @@ object SpreadsheetImport {
     fun preview(bytes: ByteArray, fileName: String, existing: List<LedgerEntry>): ImportPreview {
         val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
         val ids = existing.map { it.id }.toHashSet()
-        val fingerprints = existing.map(::fingerprint).toHashSet()
+        val duplicates = DuplicateTracker(existing)
         val sheets = XlsxCodec.read(bytes)
         val known = setOf("支出", "收入", "余额变更")
         require(sheets.any { it.name in known }) { "未找到支出、收入或余额变更工作表" }
@@ -56,9 +56,8 @@ object SpreadsheetImport {
                         merchant = get("商家"), project = get("项目"), note = get("备注"), updatedAt = now,
                         origin = ImportOrigin(hash, fileName.take(255), sheet.name, row.number, now, date, get("账户2"), get("项目分类"), raw)
                     ))
-                    val signature = fingerprint(e)
-                    val status = when { e.id in ids -> ImportStatus.EXISTING; signature in fingerprints -> ImportStatus.SUSPECTED; else -> ImportStatus.NEW }
-                    fingerprints += signature
+                    val status = when { e.id in ids -> ImportStatus.EXISTING; duplicates.isSimilar(e) -> ImportStatus.SUSPECTED; else -> ImportStatus.NEW }
+                    duplicates.add(e)
                     rows += ImportRow(sheet.name, row.number, e, status)
                 } catch (_: ArithmeticException) { rows += ImportRow(sheet.name, row.number, null, ImportStatus.ERROR, "金额超出范围或超过两位小数")
                 } catch (_: java.time.DateTimeException) { rows += ImportRow(sheet.name, row.number, null, ImportStatus.ERROR, "日期或时间不存在")
@@ -72,4 +71,58 @@ object SpreadsheetImport {
     fun fingerprint(e: LedgerEntry): String = listOf(e.type.name, e.occurredOn, e.amountMinor.toString(), e.currency,
         e.categoryL1, e.categoryL2, e.account, e.member, e.recordedBy, e.merchant, e.project, e.note,
         e.origin?.account2.orEmpty(), e.origin?.projectCategory.orEmpty()).joinToString("") { "${it.length}:$it" }
+
+    /** Shared by preview and transactional commit; similarity never proves source identity. */
+    class DuplicateTracker(existing: List<LedgerEntry>) {
+        private val timesByContent = mutableMapOf<String, MutableSet<String?>>()
+        init { existing.forEach(::add) }
+
+        fun isSimilar(entry: LedgerEntry): Boolean {
+            val times = timesByContent[fingerprint(entry)] ?: return false
+            val time = preciseTime(entry)
+            return time == null || null in times || time in times
+        }
+
+        fun add(entry: LedgerEntry) {
+            addContent(entry)
+            // Retained source fields also protect a locally edited/deleted import from
+            // becoming a default-selected NEW row in a subsequently regenerated export.
+            sourceEntry(entry)?.let(::addContent)
+        }
+
+        private fun addContent(entry: LedgerEntry) {
+            timesByContent.getOrPut(fingerprint(entry)) { mutableSetOf() }.add(preciseTime(entry))
+        }
+
+        private fun preciseTime(entry: LedgerEntry): String? {
+            val date = entry.origin?.originalDate?.replace('T', ' ') ?: return null
+            if (date.length != 19 || date.take(10) != entry.occurredOn) return null
+            return try {
+                LocalDateTime.parse(date, DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss").withResolverStyle(ResolverStyle.STRICT))
+                date
+            } catch (_: java.time.DateTimeException) { null }
+        }
+
+        private fun sourceEntry(entry: LedgerEntry): LedgerEntry? {
+            val origin = entry.origin ?: return null
+            val raw = origin.rawFields
+            if (origin.sheet !in listOf("支出", "收入", "余额变更") || !raw.keys.containsAll(headers(origin.sheet))) return null
+            fun get(key: String) = raw[key].orEmpty().trim()
+            if (get("金额").length > 40) return null
+            return try {
+                val type = when (origin.sheet) { "支出" -> EntryType.EXPENSE; "收入" -> EntryType.INCOME; else -> EntryType.BALANCE_ADJUSTMENT }
+                validateEntry(entry.copy(
+                    type = type, occurredOn = origin.originalDate.take(10),
+                    amountMinor = BigDecimal(get("金额")).movePointRight(2).longValueExact(), currency = get("账户币种"),
+                    categoryL1 = get("一级分类").ifEmpty { if (type == EntryType.BALANCE_ADJUSTMENT) "余额变更" else "" },
+                    categoryL2 = get("二级分类"), account = get(headers(origin.sheet)[4]),
+                    member = get("成员").ifEmpty { "未指定" }, recordedBy = get("记账人").ifEmpty { "未指定" },
+                    merchant = get("商家"), project = get("项目"), note = get("备注"),
+                    origin = origin.copy(account2 = get("账户2"), projectCategory = get("项目分类"))
+                ))
+            } catch (_: IllegalArgumentException) { null
+            } catch (_: ArithmeticException) { null
+            } catch (_: java.time.DateTimeException) { null }
+        }
+    }
 }

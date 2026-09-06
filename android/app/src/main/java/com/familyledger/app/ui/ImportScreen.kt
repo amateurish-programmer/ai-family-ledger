@@ -37,6 +37,12 @@ import com.familyledger.app.domain.*
                 Text("${preview.rows.size} 条记录 · 已选 ${selected.size} 条")
                 Text("所选收入 ¥ ${Money.format(income)}\n所选支出 ¥ ${Money.format(expense)}")
                 Text("余额变更仅保留原值，不计收支。疑似重复默认不选，可逐条勾选保留。", style = MaterialTheme.typography.bodySmall)
+                Text("导入仅新增，不会更新或删除旧账。双方都有时分秒时会区分不同时间；缺少时间仍提示疑似重复。", style = MaterialTheme.typography.bodySmall)
+                if (preview.rows.none { it.status == ImportStatus.NEW }) {
+                    Text(if (preview.rows.any { it.status == ImportStatus.SUSPECTED })
+                        "没有默认新增项。请查看“疑似重复”：若确为另一笔交易，可逐条勾选导入。"
+                    else "没有可自动选中的新增记录，请查看已处理和错误数量。", style = MaterialTheme.typography.bodySmall)
+                }
                 if (preview.ignoredSheets.isNotEmpty()) Text("未导入的工作表：${preview.ignoredSheets.joinToString()}" )
             }
             item {
@@ -58,9 +64,10 @@ import com.familyledger.app.domain.*
                         Column(Modifier.weight(1f)) {
                             Text("${row.sheet} · 第 ${row.rowNumber} 行 · ${row.status.label}", style = MaterialTheme.typography.labelLarge)
                             row.entry?.let { e ->
-                                Text("${e.occurredOn} · ¥ ${Money.format(e.amountMinor)}", fontWeight = FontWeight.Bold)
+                                Text("${e.origin?.originalDate ?: e.occurredOn} · ¥ ${Money.format(e.amountMinor)}", fontWeight = FontWeight.Bold)
                                 Text("${e.categoryL1} · ${e.account} · ${e.member}")
                                 if (e.note.isNotBlank()) Text(e.note, style = MaterialTheme.typography.bodySmall)
+                                if (row.status == ImportStatus.SUSPECTED) Text("与账本或本文件中的记录相似，不能确定重复；独立交易可勾选保留。", style = MaterialTheme.typography.bodySmall)
                             }
                             if (row.error.isNotBlank()) Text(row.error, color = MaterialTheme.colorScheme.error)
                         }

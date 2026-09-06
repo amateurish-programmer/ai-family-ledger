@@ -55,6 +55,25 @@ class DocumentOperationTest {
         }
     }
 
+    @Test fun exportCallbackDuringInitialLoadingIsRetained() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(context, LedgerDatabase::class.java).build()
+        val repo = LedgerRepository(db)
+        repo.save(entry)
+        lateinit var model: LedgerViewModel
+        val target = File.createTempFile("ledger-loading-export-", ".xlsx", context.cacheDir)
+        try {
+            instrumentation.runOnMainSync {
+                model = LedgerViewModel(repo)
+                model.exportSpreadsheet(context.contentResolver, Uri.fromFile(target))
+            }
+            withTimeout(10000) { model.state.first { it.message?.startsWith("Excel 已导出") == true } }
+            assertEquals(1, SpreadsheetImport.preview(target.readBytes(), "loading.xlsx", emptyList()).rows.size)
+        } finally {
+            instrumentation.runOnMainSync { model.viewModelScope.cancel() }
+            db.close(); target.delete()
+        }
+    }
+
     @Test fun importCallbackWaitsForBusyOperationInsteadOfDisappearing() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(context, LedgerDatabase::class.java).build()
         val repo = LedgerRepository(db)

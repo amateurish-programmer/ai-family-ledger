@@ -10,6 +10,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.Icons
@@ -32,11 +33,12 @@ import android.app.DatePickerDialog
     val reportKey = "${complete.period}|$period|${entries.hashCode()}"
     val context = LocalContext.current
     var requestAi by remember { mutableStateOf(false) }
-    var exportText by remember { mutableStateOf("") }
+    var exportText by rememberSaveable { mutableStateOf("") }
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
         uri?.let { model.exportReport(context.contentResolver, it, exportText) }
+        model.finishDocumentPicker(cancelled = uri == null)
     }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 22.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+    LazyColumn(Modifier.fillMaxSize().testTag("report_list"), contentPadding = PaddingValues(horizontal = 22.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         item {
             PageHeading("收支报告", "日 · 周 · 月 · 年收支统计") { IconBadge(Icons.Outlined.BarChart, sage = true) }
             Spacer(Modifier.height(18.dp))
@@ -105,26 +107,30 @@ import android.app.DatePickerDialog
             }
         }
         item { HorizontalDivider(Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.outlineVariant) }
-        item {
-            SectionHeading(complete.trendTitle)
-            Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                Text("━ 收入", color = LedgerSage, style = MaterialTheme.typography.labelMedium)
-                Text("━ 支出", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
-            }
-        }
-        items(complete.trend, key = { "trend:${it.period}" }) { period ->
-            val maximum = complete.trend.maxOfOrNull { maxOf(it.income, it.expense) }?.coerceAtLeast(1) ?: 1
-            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                Text(period.period, style = MaterialTheme.typography.titleSmall)
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    LinearProgressIndicator(progress = { (period.income.toDouble() / maximum).toFloat().coerceIn(0f, 1f) },
-                        modifier = Modifier.weight(1f).height(6.dp), color = LedgerSage, trackColor = MaterialTheme.colorScheme.secondaryContainer)
-                    Text(Money.format(period.income), Modifier.widthIn(min = 72.dp, max = 148.dp), style = MaterialTheme.typography.bodySmall, color = LedgerSage)
+        if (!daily) {
+            item(key = "monthly_trend") { MonthlyTrendChart(entries, YearMonth.from(anchor)) }
+        } else {
+            item {
+                SectionHeading(complete.trendTitle)
+                Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                    Text("━ 收入", color = LedgerSage, style = MaterialTheme.typography.labelMedium)
+                    Text("━ 支出", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
                 }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    LinearProgressIndicator(progress = { (period.expense.toDouble() / maximum).toFloat().coerceIn(0f, 1f) },
-                        modifier = Modifier.weight(1f).height(6.dp), color = MaterialTheme.colorScheme.primary, trackColor = MaterialTheme.colorScheme.primaryContainer)
-                    Text(Money.format(period.expense), Modifier.widthIn(min = 72.dp, max = 148.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            }
+            items(complete.trend, key = { "trend:${it.period}" }) { period ->
+                val maximum = complete.trend.maxOfOrNull { maxOf(it.income, it.expense) }?.coerceAtLeast(1) ?: 1
+                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text(period.period, style = MaterialTheme.typography.titleSmall)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        LinearProgressIndicator(progress = { (period.income.toDouble() / maximum).toFloat().coerceIn(0f, 1f) },
+                            modifier = Modifier.weight(1f).height(6.dp), color = LedgerSage, trackColor = MaterialTheme.colorScheme.secondaryContainer)
+                        Text(Money.format(period.income), Modifier.widthIn(min = 72.dp, max = 148.dp), style = MaterialTheme.typography.bodySmall, color = LedgerSage)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        LinearProgressIndicator(progress = { (period.expense.toDouble() / maximum).toFloat().coerceIn(0f, 1f) },
+                            modifier = Modifier.weight(1f).height(6.dp), color = MaterialTheme.colorScheme.primary, trackColor = MaterialTheme.colorScheme.primaryContainer)
+                        Text(Money.format(period.expense), Modifier.widthIn(min = 72.dp, max = 148.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                    }
                 }
             }
         }
@@ -136,7 +142,7 @@ import android.app.DatePickerDialog
                 Icon(Icons.Outlined.AutoAwesome, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("AI 解读本期报告")
             }
             Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = { exportText = complete.text(); export.launch("家庭账本-${complete.period}-${period.label}.txt") },
+            OutlinedButton(onClick = { exportText = complete.text(); model.launchDocumentPicker { export.launch("家庭账本-${complete.period}-${period.label}.txt") } },
                 enabled = !state.busy, modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp)) { Text("导出报告") }
             if (state.reportKey == reportKey && state.reportText != null) {
                 Surface(Modifier.fillMaxWidth().padding(top = 16.dp).animateContentSize(), color = MaterialTheme.colorScheme.surfaceContainerLowest,

@@ -8,6 +8,8 @@ import com.familyledger.app.data.*
 import com.familyledger.app.domain.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 data class LedgerState(val entries: List<LedgerEntry> = emptyList(), val loading: Boolean = true,
     val busy: Boolean = false, val message: String? = null, val restorePreview: List<LedgerEntry>? = null,
@@ -17,12 +19,36 @@ data class LedgerState(val entries: List<LedgerEntry> = emptyList(), val loading
     val chatMessages: List<ChatMessage> = emptyList(), val chatInput: String = "", val localRole: String = "本人",
     val cloudStatus: CloudStatus? = null, val cloudConflicts: List<CloudConflict> = emptyList(), val inviteCode: String? = null,
     val reportText: String? = null, val reportKey: String? = null, val cloudOpen: Boolean = false,
-    val autoSync: Boolean = false, val operationStatus: String? = null, val localAvatar: String = "person")
+    val autoSync: Boolean = false, val operationStatus: String? = null, val localAvatar: String = "person", val documentPickerOpen: Boolean = false)
 
 class LedgerViewModel(private val repository: LedgerRepository, private val cloud: CloudService? = null) : ViewModel() {
     private val mutableState = MutableStateFlow(LedgerState())
     val state = mutableState.asStateFlow()
     private var chatOwner: String? = null
+    private val operationMutex = Mutex()
+    private var pendingDocumentOperations = 0
+    private var preparedSpreadsheet: SpreadsheetExport? = null
+
+    fun launchDocumentPicker(launch: () -> Unit) {
+        if (state.value.busy || state.value.loading || state.value.documentPickerOpen) return
+        mutableState.update { it.copy(documentPickerOpen = true) }
+        try { launch() }
+        catch (e: Exception) {
+            finishDocumentPicker(cancelled = true)
+            mutableState.update { it.copy(message = e.message ?: "无法打开文件选择器") }
+        }
+    }
+    fun finishDocumentPicker(cancelled: Boolean = false) {
+        if (cancelled) preparedSpreadsheet = null
+        mutableState.update { it.copy(documentPickerOpen = false) }
+    }
+    fun prepareSpreadsheetExport(launch: () -> Unit) = perform {
+        // Build before CreateDocument so validation errors cannot leave an empty new file.
+        preparedSpreadsheet = withContext(Dispatchers.IO) { repository.exportSpreadsheet() }
+        mutableState.update { it.copy(documentPickerOpen = true) }
+        try { launch() }
+        catch (e: Exception) { finishDocumentPicker(cancelled = true); throw e }
+    }
 
     private suspend fun restoreConversation() {
         val owner = cloud?.conversationOwner() ?: "local"
@@ -154,7 +180,12 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         catch (e: Exception) { mutableState.update { it.copy(cloudStatus = null, message = e.message ?: "云端状态读取失败，本机账本可继续使用") } }
     }
     fun setAutoSync(enabled: Boolean) = perform { requireCloud().setAutoSyncEnabled(enabled); mutableState.update { it.copy(autoSync = enabled) } }
-    fun onForeground() { if (state.value.autoSync && state.value.cloudStatus?.email != null && state.value.cloudStatus?.familyId != null && !state.value.loading) syncCloud() }
+    fun onForeground() {
+        val snapshot = state.value
+        if (snapshot.autoSync && snapshot.cloudStatus?.email != null && snapshot.cloudStatus.familyId != null &&
+            !snapshot.loading && !snapshot.busy && !snapshot.documentPickerOpen && pendingDocumentOperations == 0 &&
+            AutoSyncPolicy.isDue(snapshot.cloudStatus.lastSync, System.currentTimeMillis())) syncCloud()
+    }
     fun syncCloud() = perform {
         val result = requireCloud().sync(repository.allEntries(), applyRemote = repository::applyRemote,
             onProgress = { progress -> mutableState.update { it.copy(operationStatus = progress) } })
@@ -177,7 +208,7 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         val result = requireCloud().ai("report", input)
         mutableState.update { it.copy(reportKey = key, reportText = result) }
     }
-    fun exportReport(resolver: ContentResolver, uri: Uri, text: String) = perform {
+    fun exportReport(resolver: ContentResolver, uri: Uri, text: String) = performDocument {
         withContext(Dispatchers.IO) {
             (resolver.openOutputStream(uri, "wt") ?: error("无法写入报告")).bufferedWriter(Charsets.UTF_8).use { it.write(text) }
         }
@@ -188,7 +219,7 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         if (state.value.busy) return
         mutableState.update { it.copy(selectedImportKeys = if (key in it.selectedImportKeys) it.selectedImportKeys - key else it.selectedImportKeys + key) }
     }
-    fun previewImport(resolver: ContentResolver, uri: Uri) = perform {
+    fun previewImport(resolver: ContentResolver, uri: Uri) = performDocument {
         val preview = withContext(Dispatchers.IO) {
             val fileName = resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
                 if (cursor.moveToFirst()) cursor.getString(0) else null
@@ -214,12 +245,17 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         refreshBatchesNow()
         mutableState.update { it.copy(message = "已撤销 $count 条，其他账目保留") }
     }
-    fun exportSpreadsheet(resolver: ContentResolver, uri: Uri) = perform {
-        withContext(Dispatchers.IO) {
-            val bytes = repository.exportSpreadsheet()
-            (resolver.openOutputStream(uri, "wt") ?: error("无法写入文件")).use { it.write(bytes) }
+    fun exportSpreadsheet(resolver: ContentResolver, uri: Uri) = performDocument {
+        val exported = withContext(Dispatchers.IO) {
+            val data = preparedSpreadsheet ?: repository.exportSpreadsheet()
+            require(data.bytes.isNotEmpty()) { "表格生成失败，请重新导出" }
+            (resolver.openOutputStream(uri, "wt") ?: error("无法写入文件")).use { output ->
+                output.write(data.bytes); output.flush()
+            }
+            data
         }
-        mutableState.update { it.copy(message = "Excel 已导出") }
+        preparedSpreadsheet = null
+        mutableState.update { it.copy(message = "Excel 已导出：全部历史 ${exported.count} 条记录（不含已删除）") }
     }
     fun save(entry: LedgerEntry) = perform {
         repository.save(entry)
@@ -229,7 +265,7 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         repository.delete(id)
         mutableState.update { it.copy(message = "已删除") }
     }
-    fun export(resolver: ContentResolver, uri: Uri) = perform {
+    fun export(resolver: ContentResolver, uri: Uri) = performDocument {
         withContext(Dispatchers.IO) {
             val text = repository.backup()
             val output = resolver.openOutputStream(uri, "wt") ?: error("无法打开目标文件")
@@ -237,7 +273,7 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         }
         mutableState.update { it.copy(message = "备份已导出，请妥善保存") }
     }
-    fun previewRestore(resolver: ContentResolver, uri: Uri) = perform {
+    fun previewRestore(resolver: ContentResolver, uri: Uri) = performDocument {
         val entries = withContext(Dispatchers.IO) {
             val stream = resolver.openInputStream(uri) ?: error("无法读取备份文件")
             val bytes = stream.use { input ->
@@ -264,13 +300,30 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
     private fun perform(block: suspend () -> Unit) {
         if (state.value.busy) return
         if (state.value.loading) { mutableState.update { it.copy(message = "正在加载本机数据，请稍候") }; return }
+        if (!operationMutex.tryLock()) return
         mutableState.update { it.copy(busy = true) }
         viewModelScope.launch {
-            try { block() }
-            catch (cancelled: CancellationException) { throw cancelled }
-            catch (e: Exception) { mutableState.update { it.copy(message = e.message ?: "操作失败，请重试") } }
-            finally { mutableState.update { it.copy(busy = false, operationStatus = null) } }
+            try { runOperation(block) } finally { operationMutex.unlock() }
         }
+    }
+    private fun performDocument(block: suspend () -> Unit) {
+        // A returned document URI must not be discarded when foreground work is busy.
+        pendingDocumentOperations++
+        viewModelScope.launch {
+            try {
+                operationMutex.withLock {
+                    state.first { !it.loading }
+                    runOperation(block)
+                }
+            } finally { pendingDocumentOperations-- }
+        }
+    }
+    private suspend fun runOperation(block: suspend () -> Unit) {
+        mutableState.update { it.copy(busy = true) }
+        try { block() }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (e: Exception) { mutableState.update { it.copy(message = e.message ?: "操作失败，请重试") } }
+        finally { mutableState.update { it.copy(busy = false, operationStatus = null) } }
     }
     private fun readLimited(input: java.io.InputStream, limit: Int): ByteArray {
         val out = java.io.ByteArrayOutputStream(); val buffer = ByteArray(8192)

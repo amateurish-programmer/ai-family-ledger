@@ -26,13 +26,13 @@ import com.familyledger.app.domain.ImportBatch
     var rollback by remember { mutableStateOf<ImportBatch?>(null) }
     var role by remember(state.localRole) { mutableStateOf(state.localRole) }
     var avatar by remember(state.localAvatar) { mutableStateOf(state.localAvatar) }
-    val importExcel = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let { model.previewImport(resolver, it) } }
-    val exportExcel = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(XlsxCodec.MIME)) { uri -> uri?.let { model.exportSpreadsheet(resolver, it) } }
+    val importExcel = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let { model.previewImport(resolver, it) }; model.finishDocumentPicker(uri == null) }
+    val exportExcel = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(XlsxCodec.MIME)) { uri -> uri?.let { model.exportSpreadsheet(resolver, it) }; model.finishDocumentPicker(uri == null) }
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-        uri?.let { model.export(resolver, it) }
+        uri?.let { model.export(resolver, it) }; model.finishDocumentPicker(uri == null)
     }
     val restore = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { model.previewRestore(resolver, it) }
+        uri?.let { model.previewRestore(resolver, it) }; model.finishDocumentPicker(uri == null)
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(horizontal = 22.dp, vertical = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -69,10 +69,10 @@ import com.familyledger.app.domain.ImportBatch
         HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
         SectionHeading("历史账本", "Excel 适合整理与查看，换机请使用完整备份。")
         SettingsAction(Icons.Outlined.FileUpload, "导入随手记 Excel", ".xlsx · 人民币 · 先预览再导入", !state.busy && !state.loading) {
-            importExcel.launch(arrayOf(XlsxCodec.MIME, "application/octet-stream"))
+            model.launchDocumentPicker { importExcel.launch(arrayOf(XlsxCodec.MIME, "application/octet-stream")) }
         }
-        SettingsAction(Icons.Outlined.FileDownload, "导出 Excel", "不含删除标记及记录 ID", !state.busy && !state.loading) {
-            exportExcel.launch("家庭账本-${LocalDate.now()}.xlsx")
+        SettingsAction(Icons.Outlined.FileDownload, "导出 Excel", "全部历史收支与余额变更 · 不含已删除记录", !state.busy && !state.loading) {
+            model.prepareSpreadsheetExport { exportExcel.launch("家庭账本-全部历史-${LocalDate.now()}.xlsx") }
         }
         SettingsAction(Icons.Outlined.History, "查看导入批次", "查看来源，按批次撤销导入", !state.busy, model::loadBatches)
         state.batches.forEach { batch ->
@@ -87,15 +87,15 @@ import com.familyledger.app.domain.ImportBatch
         HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
         SectionHeading("备份与恢复", "卸载应用会删除本机数据，请定期备份。")
         SettingsAction(Icons.Outlined.SaveAlt, "导出完整备份", "包含全部账目详情的明文文件，请妥善保存", !state.busy && !state.loading) {
-            export.launch("家庭账本-${LocalDate.now()}.ledger.json")
+            model.launchDocumentPicker { export.launch("家庭账本-${LocalDate.now()}.ledger.json") }
         }
         SettingsAction(Icons.Outlined.Restore, "从备份恢复", "仅添加新 ID，不覆盖现有记录 · 最大 10 MB", !state.busy && !state.loading) {
-            restore.launch(arrayOf("application/json", "text/plain", "application/octet-stream"))
+            model.launchDocumentPicker { restore.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }
         }
         HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("家庭账本", style = MaterialTheme.typography.titleSmall)
-            Text("V0.9.0", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("V0.10.0", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Text("文字对话记账 · 家庭财务分析 · 家庭同步", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("登录并加入家庭后可使用对话与同步；已保存账目可离线查看和编辑。", style = MaterialTheme.typography.bodySmall,

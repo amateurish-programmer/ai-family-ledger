@@ -4,6 +4,8 @@ import androidx.room.withTransaction
 import com.familyledger.app.domain.*
 import kotlinx.coroutines.flow.map
 
+data class SpreadsheetExport(val bytes: ByteArray, val count: Int)
+
 class LedgerRepository(private val database: LedgerDatabase) {
     private val dao = database.ledgerDao()
     private val conversations = database.conversationDao()
@@ -39,18 +41,20 @@ class LedgerRepository(private val database: LedgerDatabase) {
     }
     suspend fun delete(id: String) = dao.delete(id, System.currentTimeMillis())
     suspend fun backup(): String = BackupCodec.encode(dao.all().map { it.toEntry() })
-    suspend fun exportSpreadsheet(): ByteArray = XlsxCodec.write(dao.all().filter { it.deletedAt == null }.map { it.toEntry() })
+    suspend fun exportSpreadsheet(): SpreadsheetExport {
+        val rows = dao.all().filter { it.deletedAt == null }.map { it.toEntry() }
+        return SpreadsheetExport(XlsxCodec.write(rows), rows.size)
+    }
     suspend fun previewImport(bytes: ByteArray, fileName: String): ImportPreview = SpreadsheetImport.preview(bytes, fileName, dao.all().map { it.toEntry() })
     suspend fun commitImport(rows: List<LedgerEntry>, allowSimilar: Set<String> = emptySet()): Int = database.withTransaction {
         require(rows.all { it.origin != null }) { "导入记录缺少来源" }
         val valid = rows.map { EntryEntity.from(validateEntry(it)) }
         val existing = dao.all().map { it.toEntry() }
         val ids = existing.map { it.id }.toHashSet()
-        val signatures = existing.map(SpreadsheetImport::fingerprint).toHashSet()
+        val duplicates = SpreadsheetImport.DuplicateTracker(existing)
         rows.forEach { row ->
-            val signature = SpreadsheetImport.fingerprint(row)
-            require(row.id in ids || signature !in signatures || row.id in allowSimilar) { "账本已有相似记录，请取消后重新选择文件预览" }
-            signatures += signature
+            require(row.id in ids || !duplicates.isSimilar(row) || row.id in allowSimilar) { "账本已有相似记录，请取消后重新选择文件预览" }
+            duplicates.add(row)
         }
         dao.insertNew(valid).count { it != -1L }
     }
