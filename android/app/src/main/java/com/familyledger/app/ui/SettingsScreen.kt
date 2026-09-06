@@ -34,6 +34,11 @@ import com.familyledger.app.domain.ImportBatch
     val restore = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { model.previewRestore(resolver, it) }; model.finishDocumentPicker(uri == null)
     }
+    LaunchedEffect(state.spreadsheetExportReady, state.busy) {
+        if (state.spreadsheetExportReady && !state.busy) {
+            model.launchPreparedSpreadsheet { exportExcel.launch("家庭账本-全部历史-${LocalDate.now()}.xlsx") }
+        }
+    }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(horizontal = 22.dp, vertical = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
         PageHeading("账本设置", "管理你的家庭、角色与数据") { IconBadge(Icons.Outlined.Settings, sage = true) }
@@ -72,7 +77,7 @@ import com.familyledger.app.domain.ImportBatch
             model.launchDocumentPicker { importExcel.launch(arrayOf(XlsxCodec.MIME, "application/octet-stream")) }
         }
         SettingsAction(Icons.Outlined.FileDownload, "导出 Excel", "全部历史收支与余额变更 · 不含已删除记录", !state.busy && !state.loading) {
-            model.prepareSpreadsheetExport { exportExcel.launch("家庭账本-全部历史-${LocalDate.now()}.xlsx") }
+            model.prepareSpreadsheetExport()
         }
         SettingsAction(Icons.Outlined.History, "查看导入批次", "查看来源，按批次撤销导入", !state.busy, model::loadBatches)
         state.batches.forEach { batch ->

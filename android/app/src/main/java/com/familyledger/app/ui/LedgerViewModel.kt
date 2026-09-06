@@ -19,7 +19,7 @@ data class LedgerState(val entries: List<LedgerEntry> = emptyList(), val loading
     val chatMessages: List<ChatMessage> = emptyList(), val chatInput: String = "", val localRole: String = "本人",
     val cloudStatus: CloudStatus? = null, val cloudConflicts: List<CloudConflict> = emptyList(), val inviteCode: String? = null,
     val reportText: String? = null, val reportKey: String? = null, val cloudOpen: Boolean = false,
-    val autoSync: Boolean = false, val operationStatus: String? = null, val localAvatar: String = "person", val documentPickerOpen: Boolean = false)
+    val autoSync: Boolean = false, val operationStatus: String? = null, val localAvatar: String = "person", val documentPickerOpen: Boolean = false, val spreadsheetExportReady: Boolean = false)
 
 class LedgerViewModel(private val repository: LedgerRepository, private val cloud: CloudService? = null) : ViewModel() {
     private val mutableState = MutableStateFlow(LedgerState())
@@ -31,7 +31,7 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
 
     fun launchDocumentPicker(launch: () -> Unit) {
         if (state.value.busy || state.value.loading || state.value.documentPickerOpen) return
-        mutableState.update { it.copy(documentPickerOpen = true) }
+        mutableState.update { it.copy(documentPickerOpen = true, spreadsheetExportReady = false) }
         try { launch() }
         catch (e: Exception) {
             finishDocumentPicker(cancelled = true)
@@ -42,12 +42,13 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         if (cancelled) preparedSpreadsheet = null
         mutableState.update { it.copy(documentPickerOpen = false) }
     }
-    fun prepareSpreadsheetExport(launch: () -> Unit) = perform {
-        // Build before CreateDocument so validation errors cannot leave an empty new file.
+    fun prepareSpreadsheetExport() = perform {
+        // Publish a request, not a captured screen launcher: generation may outlive composition.
         preparedSpreadsheet = withContext(Dispatchers.IO) { repository.exportSpreadsheet() }
-        mutableState.update { it.copy(documentPickerOpen = true) }
-        try { launch() }
-        catch (e: Exception) { finishDocumentPicker(cancelled = true); throw e }
+        mutableState.update { it.copy(spreadsheetExportReady = true) }
+    }
+    fun launchPreparedSpreadsheet(launch: () -> Unit) {
+        if (state.value.spreadsheetExportReady) launchDocumentPicker(launch)
     }
 
     private suspend fun restoreConversation() {
@@ -183,7 +184,7 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
     fun onForeground() {
         val snapshot = state.value
         if (snapshot.autoSync && snapshot.cloudStatus?.email != null && snapshot.cloudStatus.familyId != null &&
-            !snapshot.loading && !snapshot.busy && !snapshot.documentPickerOpen && pendingDocumentOperations == 0 &&
+            !snapshot.loading && !snapshot.busy && !snapshot.documentPickerOpen && !snapshot.spreadsheetExportReady && pendingDocumentOperations == 0 &&
             AutoSyncPolicy.isDue(snapshot.cloudStatus.lastSync, System.currentTimeMillis())) syncCloud()
     }
     fun syncCloud() = perform {

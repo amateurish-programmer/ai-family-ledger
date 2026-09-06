@@ -74,6 +74,33 @@ class DocumentOperationTest {
         }
     }
 
+    @Test fun preparedExportWaitsForCurrentScreenLauncher() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(context, LedgerDatabase::class.java).build()
+        val repo = LedgerRepository(db)
+        repo.save(entry)
+        lateinit var model: LedgerViewModel
+        instrumentation.runOnMainSync { model = LedgerViewModel(repo) }
+        try {
+            withTimeout(5000) { model.state.first { !it.loading } }
+            instrumentation.runOnMainSync { model.prepareSpreadsheetExport() }
+            withTimeout(5000) { model.state.first { it.spreadsheetExportReady && !it.busy } }
+            assertFalse(model.state.value.documentPickerOpen)
+            // A screen that mounts after generation provides its own current launcher.
+            var launched = 0
+            instrumentation.runOnMainSync { model.launchPreparedSpreadsheet { launched++ } }
+            assertEquals(1, launched)
+            assertTrue(model.state.value.documentPickerOpen)
+            assertFalse(model.state.value.spreadsheetExportReady)
+            instrumentation.runOnMainSync { model.launchPreparedSpreadsheet { launched++ } }
+            assertEquals(1, launched)
+            instrumentation.runOnMainSync { model.finishDocumentPicker(cancelled = true) }
+            assertFalse(model.state.value.documentPickerOpen)
+        } finally {
+            instrumentation.runOnMainSync { model.viewModelScope.cancel() }
+            db.close()
+        }
+    }
+
     @Test fun importCallbackWaitsForBusyOperationInsteadOfDisappearing() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(context, LedgerDatabase::class.java).build()
         val repo = LedgerRepository(db)
