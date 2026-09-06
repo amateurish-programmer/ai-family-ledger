@@ -58,6 +58,15 @@ object ChatCodec {
                 appendLine("\n支出分类（最多显示前十项）")
                 summary.categories.take(10).forEach { appendLine("${it.name}：¥ ${Money.format(it.amount)}") }
             }
+            if (query.member.isBlank()) {
+                val members = rows.filter { it.type == EntryType.EXPENSE }.groupBy { it.member }.map { (name, records) ->
+                    CategoryTotal(name, records.fold(0L) { total, entry -> Math.addExact(total, entry.amountMinor) })
+                }.sortedByDescending { it.amount }
+                if (members.isNotEmpty()) {
+                    appendLine("\n成员支出（最多显示前十项）")
+                    members.take(10).forEach { appendLine("${it.name}：¥ ${Money.format(it.amount)}") }
+                }
+            }
             if (rows.isNotEmpty()) {
                 appendLine("\n最近明细（最多十笔）")
                 rows.sortedByDescending { it.occurredOn }.take(10).forEach {

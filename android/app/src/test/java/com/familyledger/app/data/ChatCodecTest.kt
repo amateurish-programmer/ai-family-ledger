@@ -29,6 +29,8 @@ class ChatCodecTest {
             row.copy(id = "adjust", type = EntryType.BALANCE_ADJUSTMENT), row.copy(id = "foreign", currency = "USD"))
         val answer = ChatCodec.answer(ChatQuery("2026-09-01", "2026-10-01", "老婆", "午餐", "午饭"), rows)
         assertTrue(answer.contains("共 2 笔收支")); assertTrue(answer.contains("支出 ¥ 0.30")); assertTrue(answer.contains("结余 ¥ -0.30"))
+        val all = ChatCodec.answer(ChatQuery("2026-09-01", "2026-10-01", "", "", ""), rows)
+        assertTrue(all.contains("老婆：¥ 0.30")); assertTrue(all.contains("老公：¥ 999.99"))
     }
     @Test fun invalidQueryDateAndRoleAreRejected() {
         assertThrows(IllegalArgumentException::class.java) { ChatCodec.decode("""{"reply":"查询","entries":[],"query":{"start":"2026-02-30","end":"2026-03-01","member":"","category":"","keyword":""}}""", "老公") }

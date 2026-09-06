@@ -4,6 +4,10 @@
 
 ## 当前项目与内置配置
 
+V0.7 已更新 `ledger-ai`，增加 `chat` 操作并兼容旧版 `parse`/`report`。输入为 `{text,today,role,history,members,categories}`，历史最多四条、成员/分类各最多四十项，总请求仍限 32 KiB；返回的 result 字符串包含 `{reply,entries,query}`。query 为 `{start,end,member,category,keyword}`，end 不包含。服务端不查询账目、也不执行账目改删，金额汇总由 Android 本机完成。普通 Preferences 新增按账号保存的本机角色，角色不授予任何权限。详见 [V0.7](V0.7.md)。
+
+注册后续状态：用户更新 QQ 授权码后已收到邮件；控制台确认受影响账号已验证。默认 Site URL 已从 localhost 改为本项目 `auth-result` 指引端点，详见 [跳转修复](AUTH_REDIRECT_FIX.md)。下方 SMTP 失败与初始验收描述保留为部署历史。
+
 - 项目根 URL：`https://xdgeybztysuvvwagqkvb.supabase.co`
 - Android 公开 key：`sb_publishable_DMkKHBxMWwQ-j-hWvj-cuw_pE8R4NH-`
 - [项目控制台](https://supabase.com/dashboard/project/xdgeybztysuvvwagqkvb)，区域为用户创建时选定的 East US (Ohio)。
