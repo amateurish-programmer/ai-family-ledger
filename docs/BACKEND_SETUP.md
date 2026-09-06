@@ -49,17 +49,19 @@ V0.7 已更新 `ledger-ai`，增加 `chat` 操作并兼容旧版 `parse`/`report
 | `create_invite` | `{}` | 64 位十六进制随机码；仅 owner，24 小时到期，一次性消费，最多十个有效待用邀请，仅 SHA-256 入库 |
 | `join_family` | `{p_code}` | `{id,name}`；原子消费邀请，已有家庭原样返回，不能通过此接口换家庭 |
 | `put_ledger_entry` | `{p_family,p_id,p_payload,p_expected_revision}` | 成功 `{ok:true,revision}`；冲突 `{ok:false,revision,payload}`；0 表示只允许新增 |
+| `get_ledger_manifest` | `{p_family,p_after}` | 同家庭 id/revision/payload_bytes，UUID 游标，每页五百条 |
+| `put_ledger_entries` | `{p_family,p_entries}` | 最多五十条、6 MiB，逐条返回 id/ok/revision；复用单笔权限/CAS |
 | `consume_ai_quota` | `{p_user}` | boolean；仅 service_role 可执行，仅用于已验证用户的 AI 配额 |
 
 全部函数固定空 `search_path`，显式指定表与自定义函数 schema，撤销默认公开执行权；只向 authenticated 授予必要 RPC，向 service_role 单独授予配额 RPC。客户端无直接 INSERT/UPDATE/DELETE 授权，不能改成员、邀请、actor 或 revision。
 
 ## 同步与冲突
 
-Android `CloudService` 使用 `HttpURLConnection`、`org.json` 和 IO 协程，无新增网络 SDK。手动同步先检查当前成员关系，按 UUID 游标每页十条拉取，再逐条执行同步；软删除必须一同上传下载，不能物理过滤掉删除项。单条 payload 上限 768 KiB，整个同步快照限 10 MiB / 十万条，HTTP 响应限 12 MiB；超限停止并明确报错。
+Android `CloudService` 使用 `HttpURLConnection`、`org.json` 和 IO 协程，无新增网络 SDK。手动同步先检查当前成员关系，按 UUID 游标每页五百条读取轻量版本清单，只下载变化记录，并按最多五十条和字节上限分批 CAS 上传；软删除必须一同上传下载，不能物理过滤掉删除项。单条 payload 上限 768 KiB，整个同步快照限 10 MiB / 十万条，HTTP 响应限 12 MiB；超限停止并明确报错。
 
 同步索引只保存上次成功同步的服务端 revision 与规范 JSON 的 SHA-256。两边内容相同更新索引；只有远端变更则落地；只有本机变更则按 revision CAS 上传；两边都变更或从未同步过的同 ID 内容不同则保留双方冲突。下载只有 `applyRemote` 持久化成功后记索引，上传只在服务端确认后记索引，失败不清索引。网络写成功但响应丢失可在下次同步由内容相同恢复；已同步记录从服务端消失会停止，避免静默重建。
 
-冲突解决必须用户明确选择本机或云端；选择前再读取最新 revision，已变化则要求重新同步，不覆盖新修改。调用方在同步/解决冲突期间须锁住本机编辑、导入、恢复等写入，保证传入 local 快照有效。每次同步不是跨全家庭的全量数据库快照，也不是跨网络的事务：并发设备刚新增或再次编辑的记录可能到下次同步再出现；出错前已成功的单条操作保留，未完成操作可重试。
+冲突解决必须用户明确选择本机或云端；选择前再读取最新 revision，已变化则要求重新同步，不覆盖新修改。调用方在同步/解决冲突期间须锁住本机编辑、导入、恢复等写入，保证传入 local 快照有效。每次同步不是跨全家庭的全量数据库快照，也不是跨网络的事务：并发设备刚新增或再次编辑的记录可能到下次同步再出现；出错前已成功的批次操作保留，未完成操作可重试。
 
 默认不自动同步。用户明确开启“打开 App 时同步”后由应用前台生命周期触发；这不是后台常驻、定时服务或实时订阅。关闭开关不删除已上传数据。
 
@@ -69,9 +71,12 @@ Android `CloudService` 使用 `HttpURLConnection`、`org.json` 和 IO 协程，�
 
 - `parse` 输入 `{text,today}`，`today` 为 `YYYY-MM-DD`；结果 `result` 是 JSON 字符串，严格结构为 `{"entries":[{"type":"EXPENSE","amount":"36.80","date":"2026-09-06","category":"食品酒水","subcategory":"午餐","account":"银行卡","member":"本人","recordedBy":"本人","merchant":"","project":"","note":"原文"}]}`。最多二十条、所有字段为文本，type 仅收入/支出，金额为十进制元字符串。模型只生成提案，客户端仍做金额/日期校验并经用户编辑确认才入账。
 - `report` 输入 `{period,income,expense,balance,categories:[{name,amount}],members:[{name,amount}],trend:[{period,income,expense}]}`；所有金额必须为客户端以整数分计算后格式化的字符串。函数不合计报告金额；模型以定性解释为主，可引用原始汇总数值。2026-09-06 已修复“任意数字触发 502”：允许输入中的年月、行首序号与准确金额；未提供数值、百分比、无效格式或输出截断时明确返回基础摘要。认证、额度和网络故障仍报错。新增固定诊断事件，不记录请求或模型正文。详见 [报告修复记录](REPORT_AI_FIX.md)。
-- 请求限制 32 KiB，解析原文最多六千字符。供应商调用超时二十五秒，parse/report 最大输出 2500 tokens，chat 最大 4000 tokens，响应上限 128 KiB；不自动重试供应商以免重复计费。Supabase Auth/数据库请求各限十秒；所有 fetch 禁止重定向。
+- `chat` 新增可选 `finance` 摘要；支持真实统计分析和八条历史上下文，保持旧版兼容。`analyze` 输入 `{text,history,finance}`，返回财务分析纯文本。事实引用由程序展开。详见 [V0.8](V0.8.md)。
+- 请求限制 64 KiB，解析原文最多六千字符。供应商调用超时二十五秒，parse/report 最大输出 2500 tokens，chat 最大 4000 tokens，响应上限 128 KiB；不自动重试供应商以免重复计费。Supabase Auth/数据库请求各限十秒；所有 fetch 禁止重定向。
 - 数据库原子限流：单用户每分钟五次、每天三十次，整个项目每分钟三十次、每天三百次。按 UTC 分钟/日期计数，包括失败尝试；已到全局限制的请求不调用供应商。应另外在供应商控制台设置预算和告警，服务端限流不等于供应商金额账单保证。额度策略属于代码配置，不能由手机覆盖。
 
 ## 待验收边界
 
 本轮按用户后续授权完成数据库和函数部署，保留“不运行功能验收”的要求。初次迁移因 PL/pgSQL 条件中的 CASE 表达式缺少括号而失败，确认事务回滚后修正三处同类写法，再次迁移成功并记录版本。读取表元数据确认 RLS 开启不代表权限行为验收通过。仍未验收成员/非成员/匿名访问、邀请并发消费与过期、CAS 同时编辑与删除、离线重试、登录刷新/退出、跨家庭拒绝、应用重启后 Keystore 解密、设备前台自动同步、AI 配额及真实模型请求。没有实测结果的项目不能宣称已通过。
+
+V0.8 同步批处理实现与验证更新见 [同步性能记录](SYNC_PERFORMANCE.md)，原有未验收边界未自动转为已通过。

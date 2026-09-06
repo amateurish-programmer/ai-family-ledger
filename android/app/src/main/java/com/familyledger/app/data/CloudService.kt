@@ -27,12 +27,15 @@ import javax.crypto.spec.GCMParameterSpec
 
 data class CloudStatus(val configured: Boolean, val email: String?, val familyId: String?, val familyName: String?, val lastSync: Long)
 data class CloudConflict(val id: String, val local: LedgerEntry, val remote: LedgerEntry, val remoteRevision: Long)
-data class SyncResult(val uploaded: Int, val downloaded: Int, val conflicts: List<CloudConflict>)
+data class SyncResult(val uploaded: Int, val downloaded: Int, val conflicts: List<CloudConflict>, val elapsedMillis: Long = 0, val requestCount: Int = 0)
 
 /** Manual, opt-in synchronization. The caller must block local edits while passing a snapshot. */
 class CloudService(context: Context) {
     private val config = context.applicationContext.getSharedPreferences("cloud_public", Context.MODE_PRIVATE)
     private val secrets = context.applicationContext.getSharedPreferences("cloud_encrypted", Context.MODE_PRIVATE)
+
+    private data class SyncMetrics(val version: Long, var requests: Int = 0)
+    private var syncMetrics: SyncMetrics? = null
 
     companion object {
         private const val KEY_ALIAS = "family_ledger_cloud_aes_v1"
@@ -153,51 +156,29 @@ class CloudService(context: Context) {
             ?: error("邀请码响应格式无效")).also { require(Regex("[0-9a-f]{64}").matches(it)) { "邀请码响应无效" } }
     }
 
-    suspend fun sync(local: List<LedgerEntry>, applyRemote: suspend (List<LedgerEntry>) -> Unit): SyncResult = operation { version ->
-        val family = recoverFamily(version, required = true)!!
-        require(local.map { it.id }.toSet().size == local.size) { "本机存在重复 ID，未同步" }
-        BackupCodec.decode(BackupCodec.encode(local)) // Validate every local row before any network write.
-        val remote = pull(family, version)
-        val conflicts = mutableListOf<CloudConflict>()
-        var uploaded = 0
-        var downloaded = 0
-        val localById = local.associateBy { it.id }
-        for ((id, row) in remote) {
-            val own = localById[id]
-            val known = index(id, version)
-            require(known == null || row.revision >= known.revision) { "云端版本低于已同步版本，请停止同步并核查服务端恢复情况" }
-            val remoteHash = hash(row.entry)
-            if (own == null) {
-                applyRemote(listOf(row.entry))
-                remember(id, row.revision, remoteHash, version)
-                downloaded++
-                continue
-            }
-            val ownHash = hash(own)
-            when {
-                ownHash == remoteHash -> remember(id, row.revision, ownHash, version)
-                known == null -> conflicts += CloudConflict(id, own, row.entry, row.revision)
-                ownHash == known.hash -> {
-                    applyRemote(listOf(row.entry))
-                    remember(id, row.revision, remoteHash, version)
-                    downloaded++
-                }
-                row.revision == known.revision && remoteHash == known.hash -> {
-                    val conflict = push(family, own, row.revision, version)
-                    if (conflict == null) uploaded++ else conflicts += conflict
-                }
-                else -> conflicts += CloudConflict(id, own, row.entry, row.revision)
-            }
-        }
-        for (own in local.filter { it.id !in remote }) {
-            // Server rows are never physically deleted by client APIs. A vanished indexed row
-            // means server state was reset/altered; fail closed instead of silently recreating it.
-            require(index(own.id, version) == null) { "云端缺失已同步记录，请停止同步并核查服务端备份，未自动重建" }
-            val conflict = push(family, own, 0, version)
-            if (conflict == null) uploaded++ else conflicts += conflict
-        }
-        mutate(version) { it.put("lastSync", System.currentTimeMillis()) }
-        SyncResult(uploaded, downloaded, conflicts)
+    suspend fun sync(local: List<LedgerEntry>, applyRemote: suspend (List<LedgerEntry>) -> Unit, onProgress: (String) -> Unit = {}): SyncResult = operation { version ->
+        val started = System.nanoTime()
+        val metrics = SyncMetrics(version)
+        syncMetrics = metrics
+        try {
+            onProgress("检查家庭权限")
+            val family = recoverFamily(version, required = true)!!
+            BackupCodec.decode(BackupCodec.encode(local))
+            val indexes = indexes(version)
+            onProgress("检查云端版本清单")
+            val manifest = pullManifest(family, version)
+            val result = SyncEngine(
+                hash = ::hash,
+                uploadBytes = { uploadJson(it).toString().toByteArray(Charsets.UTF_8).size + 1 },
+                fetch = { ids -> fetchBatch(family, ids, version) },
+                push = { rows -> pushBatch(family, rows, version) },
+                applyRemote = applyRemote,
+                remember = { values -> rememberBatch(values, version) },
+                progress = onProgress,
+            ).run(local, manifest, indexes)
+            mutate(version) { it.put("lastSync", System.currentTimeMillis()) }
+            result.copy(elapsedMillis = (System.nanoTime() - started) / 1_000_000, requestCount = metrics.requests)
+        } finally { syncMetrics = null }
     }
 
     suspend fun resolve(conflict: CloudConflict, useRemote: Boolean, applyRemote: suspend (List<LedgerEntry>) -> Unit): Unit = operation { version ->
@@ -215,54 +196,87 @@ class CloudService(context: Context) {
     }
 
     suspend fun ai(operation: String, input: JSONObject): String = this.operation { version ->
-        require(operation in setOf("parse", "report", "chat")) { "不支持的 AI 操作" }
+        require(operation in setOf("parse", "report", "chat", "analyze")) { "不支持的 AI 操作" }
         recoverFamily(version, required = true)
         val body = JSONObject().put("operation", operation).put("input", input)
-        require(body.toString().toByteArray(Charsets.UTF_8).size <= 32768) { "AI 输入过长" }
+        require(body.toString().toByteArray(Charsets.UTF_8).size <= 65536) { "AI 输入过长" }
         val result = json(authorized("POST", "/functions/v1/ledger-ai", body, version)).get("result")
         require(result is String && result.length <= 20000) { "AI 响应格式无效" }
         result
     }
 
-    private data class Remote(val entry: LedgerEntry, val revision: Long)
-    private data class Index(val revision: Long, val hash: String)
 
     private suspend fun <T> operation(block: suspend (Long) -> T): T = withContext(Dispatchers.IO) {
         operations.withLock { block(synchronized(stateGuard) { ensureBuiltInConfiguration(); epoch }) }
     }
 
-    private fun pull(family: String, version: Long): Map<String, Remote> {
-        val result = linkedMapOf<String, Remote>()
+    private fun pullManifest(family: String, version: Long): List<SyncManifest> {
+        val result = mutableListOf<SyncManifest>()
         var cursor: String? = null
         var bytes = 0L
         while (true) {
-            val rows = JSONArray(authorized("GET", "/rest/v1/ledger_entries?select=id,payload,revision&family_id=eq.$family&order=id.asc&limit=10" + (cursor?.let { "&id=gt.$it" } ?: ""), null, version))
-            if (rows.length() == 0) break
+            val rows = JSONArray(rpc("get_ledger_manifest", JSONObject().put("p_family", family)
+                .put("p_after", cursor ?: JSONObject.NULL), version))
+            require(rows.length() <= 500) { "云端清单分页无效" }
             for (i in 0 until rows.length()) {
                 val row = rows.getJSONObject(i)
-                bytes += row.getString("payload").toByteArray(Charsets.UTF_8).size
+                val id = row.getString("id")
+                require(UUID.fromString(id).toString() == id && (cursor == null || id > cursor!!)) { "云端清单顺序无效" }
+                val size = row.getInt("payload_bytes")
+                val revision = row.getLong("revision")
+                require(size in 1..MAX_ENTRY_BYTES && revision > 0) { "云端清单无效" }
+                bytes += size
                 require(bytes <= BackupCodec.MAX_BYTES && result.size < 100000) { "云端账本超过本版本 10 MB / 100000 条同步上限" }
-                val decoded = remote(row)
-                require(result.put(decoded.entry.id, decoded) == null) { "云端分页含重复记录" }
-                cursor = decoded.entry.id
+                result += SyncManifest(id, revision, size)
+                cursor = id
             }
-            if (rows.length() < 10) break
+            if (rows.length() < 500) break
         }
         return result
     }
 
-    private fun fetchOne(family: String, id: String, version: Long): Remote? {
+    private fun fetchBatch(family: String, ids: List<String>, version: Long): List<SyncRemote> {
+        require(ids.size in 1..50 && ids.all { UUID.fromString(it).toString() == it })
+        val rows = JSONArray(authorized("GET", "/rest/v1/ledger_entries?select=id,payload,revision&family_id=eq.$family&id=in.(" + ids.joinToString(",") + ")&limit=50", null, version))
+        return (0 until rows.length()).map { remote(rows.getJSONObject(it)) }
+    }
+
+    private fun uploadJson(row: SyncUpload): JSONObject {
+        val payload = BackupCodec.encode(listOf(row.entry))
+        require(payload.toByteArray(Charsets.UTF_8).size <= MAX_ENTRY_BYTES) { "单条账目及导入来源过大" }
+        return JSONObject().put("id", row.entry.id).put("payload", payload).put("expected_revision", row.expected)
+    }
+
+    private fun pushBatch(family: String, rows: List<SyncUpload>, version: Long): List<SyncUploadResult> {
+        val response = JSONArray(rpc("put_ledger_entries", JSONObject().put("p_family", family)
+            .put("p_entries", JSONArray().apply { rows.forEach { put(uploadJson(it)) } }), version))
+        require(response.length() == rows.size) { "批量上传响应无效" }
+        val requested = rows.associateBy { it.entry.id }
+        return (0 until response.length()).map { i ->
+            val result = response.getJSONObject(i)
+            val id = result.getString("id")
+            require(id in requested) { "批量上传响应 ID 无效" }
+            if (result.getBoolean("ok")) SyncUploadResult(id, result.getLong("revision")) else {
+                require(!result.isNull("revision")) { "云端记录消失，请停止同步并核查服务端" }
+                val latest = fetchOne(family, id, version) ?: error("云端记录消失，请停止同步并核查服务端")
+                require(latest.revision >= result.getLong("revision")) { "云端版本回退，请停止同步" }
+                SyncUploadResult(id, latest.revision, latest)
+            }
+        }
+    }
+
+    private fun fetchOne(family: String, id: String, version: Long): SyncRemote? {
         require(UUID.fromString(id).toString() == id)
         val rows = JSONArray(authorized("GET", "/rest/v1/ledger_entries?select=id,payload,revision&family_id=eq.$family&id=eq.$id&limit=1", null, version))
         return if (rows.length() == 0) null else remote(rows.getJSONObject(0))
     }
 
-    private fun remote(row: JSONObject): Remote {
+    private fun remote(row: JSONObject): SyncRemote {
         val entry = BackupCodec.decode(row.getString("payload")).single()
         require(entry.id == row.getString("id")) { "云端记录 ID 不匹配" }
         val revision = row.getLong("revision")
         require(revision > 0) { "云端版本无效" }
-        return Remote(entry, revision)
+        return SyncRemote(entry, revision)
     }
 
     private fun push(family: String, entry: LedgerEntry, expected: Long, version: Long): CloudConflict? {
@@ -359,6 +373,7 @@ class CloudService(context: Context) {
         }
         val base = officialUrl(pair.first)
         require(path.startsWith("/") && !path.startsWith("//"))
+        syncMetrics?.takeIf { it.version == version }?.let { it.requests++ }
         val connection = URI(base + path).toURL().openConnection() as HttpURLConnection
         val deadline = System.nanoTime() + 90_000_000_000L
         try {
@@ -371,7 +386,7 @@ class CloudService(context: Context) {
             if (bearer != null) connection.setRequestProperty("Authorization", "Bearer $bearer")
             if (body != null) {
                 val bytes = body.toString().toByteArray(Charsets.UTF_8)
-                require(bytes.size <= MAX_ENTRY_BYTES * 2) { "请求数据过大" }
+                require(bytes.size <= 6 * 1024 * 1024) { "请求数据过大" }
                 connection.doOutput = true
                 connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
                 connection.setFixedLengthStreamingMode(bytes.size)
@@ -451,18 +466,40 @@ class CloudService(context: Context) {
         check(secrets.edit().putString("state", Base64.encodeToString(encrypted, Base64.NO_WRAP)).commit()) { "无法安全保存云状态" }
     }
 
-    private fun index(id: String, version: Long): Index? = synchronized(stateGuard) {
+    private fun index(id: String, version: Long): SyncIndex? = synchronized(stateGuard) {
         checkEpoch(version)
         config.getString("index:$id", null)?.let {
             val parts = it.split(':')
             require(parts.size == 2 && Regex("[0-9a-f]{64}").matches(parts[1])) { "同步索引损坏，请停止同步" }
-            Index(parts[0].toLong().also { revision -> require(revision > 0) }, parts[1])
+            SyncIndex(parts[0].toLong().also { revision -> require(revision > 0) }, parts[1])
         }
     }
 
-    private fun remember(id: String, revision: Long, hash: String, version: Long) = synchronized(stateGuard) {
+    private fun indexes(version: Long): Map<String, SyncIndex> = synchronized(stateGuard) {
         checkEpoch(version)
-        check(config.edit().putString("index:$id", "$revision:$hash").commit()) { "同步索引保存失败，请重新同步" }
+        config.all.keys.filter { it.startsWith("index:") }.associate { key ->
+            val id = key.removePrefix("index:")
+            require(UUID.fromString(id).toString() == id) { "同步索引 ID 损坏" }
+            id to requireNotNull(index(id, version))
+        }
+    }
+
+    private fun remember(id: String, revision: Long, hash: String, version: Long) =
+        rememberBatch(mapOf(id to SyncIndex(revision, hash)), version)
+
+    private fun rememberBatch(values: Map<String, SyncIndex>, version: Long) = synchronized(stateGuard) {
+        checkEpoch(version)
+        val editor = config.edit()
+        var changed = false
+        values.forEach { (id, index) ->
+            val value = "${index.revision}:${index.hash}"
+            if (config.getString("index:$id", null) != value) {
+                editor.putString("index:$id", value)
+                changed = true
+            }
+        }
+        if (changed) check(editor.commit()) { "同步索引保存失败，请重新同步" }
+        Unit
     }
 
     private fun hash(entry: LedgerEntry): String {

@@ -1,15 +1,19 @@
 package com.familyledger.app.ui
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.familyledger.app.domain.*
@@ -17,8 +21,6 @@ import java.time.YearMonth
 
 @Composable fun ReportsScreen(entries: List<LedgerEntry>, month: YearMonth, onMonth: (YearMonth) -> Unit, model: LedgerViewModel, state: LedgerState) {
     var yearly by rememberSaveable { mutableStateOf(false) }
-    val start = if (yearly) month.atDay(1).withDayOfYear(1) else month.atDay(1)
-    val end = if (yearly) start.plusYears(1) else start.plusMonths(1)
     val complete = remember(entries, month, yearly) { buildReport(entries, month, yearly) }
     val report = complete.summary
     val reportKey = "$month|$yearly|${entries.hashCode()}"
@@ -28,63 +30,97 @@ import java.time.YearMonth
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
         uri?.let { model.exportReport(context.contentResolver, it, exportText) }
     }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 22.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         item {
-            Text("收支报告", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                FilterChip(selected = !yearly, onClick = { yearly = false }, label = { Text("月度") })
-                FilterChip(selected = yearly, onClick = { yearly = true }, label = { Text("年度") })
+            PageHeading("收支报告", "月度与年度收支 · 本机账本统计") { IconBadge(Icons.Outlined.BarChart, sage = true) }
+            Spacer(Modifier.height(18.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                FilterChip(selected = !yearly, onClick = { yearly = false }, label = { Text("月度报告") }, modifier = Modifier.heightIn(min = 48.dp))
+                FilterChip(selected = yearly, onClick = { yearly = true }, label = { Text("年度报告") }, modifier = Modifier.heightIn(min = 48.dp))
             }
+            Spacer(Modifier.height(8.dp))
             PeriodSelector(if (yearly) "${month.year} 年" else "${month.year} 年 ${month.monthValue} 月",
                 { onMonth(if (yearly) month.minusYears(1) else month.minusMonths(1)) },
                 { onMonth(if (yearly) month.plusYears(1) else month.plusMonths(1)) })
         }
         item { SummaryBlock(report) }
         item {
-            Text("${complete.count} 笔收支 · 上期支出 ¥ ${Money.format(complete.previousExpense)}")
             val difference = Math.subtractExact(report.expense, complete.previousExpense)
-            Text("较上期${if (difference >= 0) "增加" else "减少"} ¥ ${Money.format(kotlin.math.abs(difference))}", style = MaterialTheme.typography.bodySmall)
-        }
-        item {
-            Text("支出去向", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text("按一级分类统计 · 人民币", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        if (report.categories.isEmpty()) item { Text("这段时间还没有支出记录。") }
-        items(report.categories, key = { it.name }) { category ->
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(category.name, modifier = Modifier.weight(1f))
-                    Text("¥ ${Money.format(category.amount)}", fontWeight = FontWeight.Medium)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (difference > 0) Icons.Outlined.TrendingUp else Icons.Outlined.TrendingDown, null,
+                    tint = if (difference > 0) MaterialTheme.colorScheme.primary else LedgerSage)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text("支出较上期${if (difference >= 0) "增加" else "减少"} ¥ ${Money.format(kotlin.math.abs(difference))}", style = MaterialTheme.typography.titleSmall)
+                    Text("本期 ${complete.count} 笔收支 · 上期支出 ¥ ${Money.format(complete.previousExpense)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                LinearProgressIndicator(progress = { (category.amount.toDouble() / report.expense.coerceAtLeast(1)).toFloat() },
-                    modifier = Modifier.fillMaxWidth().height(6.dp))
             }
         }
-        item { Text("成员支出", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+        item { HorizontalDivider(Modifier.padding(top = 4.dp), color = MaterialTheme.colorScheme.outlineVariant) }
+        item { SectionHeading("支出去向", "按一级分类统计 · 人民币") }
+        if (report.categories.isEmpty()) item { EmptyLedger("还没有支出记录", "确认记账后，支出去向会显示在这里。") }
+        items(report.categories, key = { "category:${it.name}" }) { category ->
+            Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(category.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                    Text("¥ ${Money.format(category.amount)}", style = MaterialTheme.typography.titleSmall)
+                }
+                LinearProgressIndicator(progress = { (category.amount.toDouble() / report.expense.coerceAtLeast(1)).toFloat().coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth().height(8.dp), color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.primaryContainer)
+            }
+        }
+        item { HorizontalDivider(Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.outlineVariant) }
+        item { SectionHeading("成员支出", "按账目归属成员统计") }
+        if (complete.members.isEmpty()) item { Text("本期暂无成员支出。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         items(complete.members, key = { "member:${it.name}" }) { member ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(member.name, Modifier.weight(1f)); Text("¥ ${Money.format(member.amount)}")
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                IconBadge(Icons.Outlined.PersonOutline, sage = true)
+                Text(member.name, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                Text("¥ ${Money.format(member.amount)}", modifier = Modifier.widthIn(max = 165.dp), style = MaterialTheme.typography.titleMedium)
             }
         }
-        item { Text(if (yearly) "全年月度趋势" else "近六个月趋势", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+        item { HorizontalDivider(Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.outlineVariant) }
+        item {
+            SectionHeading(if (yearly) "全年月度趋势" else "近六个月趋势")
+            Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                Text("━ 收入", color = LedgerSage, style = MaterialTheme.typography.labelMedium)
+                Text("━ 支出", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
+            }
+        }
         items(complete.trend, key = { "trend:${it.period}" }) { period ->
             val maximum = complete.trend.maxOfOrNull { maxOf(it.income, it.expense) }?.coerceAtLeast(1) ?: 1
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(period.period, fontWeight = FontWeight.Medium)
-                Text("收入 ${Money.format(period.income)} · 支出 ${Money.format(period.expense)}", style = MaterialTheme.typography.bodySmall)
-                LinearProgressIndicator(progress = { (period.income.toDouble() / maximum).toFloat() }, modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.primary)
-                LinearProgressIndicator(progress = { (period.expense.toDouble() / maximum).toFloat() }, modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.tertiary)
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text(period.period, style = MaterialTheme.typography.titleSmall)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    LinearProgressIndicator(progress = { (period.income.toDouble() / maximum).toFloat().coerceIn(0f, 1f) },
+                        modifier = Modifier.weight(1f).height(6.dp), color = LedgerSage, trackColor = MaterialTheme.colorScheme.secondaryContainer)
+                    Text(Money.format(period.income), Modifier.widthIn(min = 72.dp, max = 148.dp), style = MaterialTheme.typography.bodySmall, color = LedgerSage)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    LinearProgressIndicator(progress = { (period.expense.toDouble() / maximum).toFloat().coerceIn(0f, 1f) },
+                        modifier = Modifier.weight(1f).height(6.dp), color = MaterialTheme.colorScheme.primary, trackColor = MaterialTheme.colorScheme.primaryContainer)
+                    Text(Money.format(period.expense), Modifier.widthIn(min = 72.dp, max = 148.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                }
             }
         }
+        item { HorizontalDivider(Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.outlineVariant) }
         item {
+            SectionHeading("读懂这份报告", "AI 根据汇总数据解释收支，金额以账本统计为准。")
+            Spacer(Modifier.height(12.dp))
+            Button(onClick = { requestAi = true }, enabled = !state.busy, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+                Icon(Icons.Outlined.AutoAwesome, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("AI 解读本期报告")
+            }
+            Spacer(Modifier.height(8.dp))
             OutlinedButton(onClick = { exportText = complete.text(); export.launch("家庭账本-${month}-${if (yearly) "年报" else "月报"}.txt") },
-                enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("导出报告") }
-            OutlinedButton(onClick = { requestAi = true }, enabled = !state.busy,
-                modifier = Modifier.fillMaxWidth()) { Text("AI 解读本期报告") }
+                enabled = !state.busy, modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp)) { Text("导出报告") }
             if (state.reportKey == reportKey && state.reportText != null) {
-                Text("AI 解读", style = MaterialTheme.typography.titleLarge)
-                Text(state.reportText)
-                Text("AI 解读基于汇总数据；金额以上方账本统计为准。", style = MaterialTheme.typography.bodySmall)
+                Surface(Modifier.fillMaxWidth().padding(top = 16.dp).animateContentSize(), color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                    shape = MaterialTheme.shapes.large) {
+                    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("AI 解读", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                        androidx.compose.foundation.text.selection.SelectionContainer { Text(state.reportText, style = MaterialTheme.typography.bodyLarge) }
+                    }
+                }
             }
         }
         item { Text("结余为本期收入减支出，不代表账户余额。余额调整不计入本报告。", style = MaterialTheme.typography.bodySmall,

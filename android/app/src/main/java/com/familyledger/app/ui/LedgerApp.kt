@@ -1,6 +1,10 @@
 package com.familyledger.app.ui
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -77,7 +81,7 @@ import java.time.YearMonth
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            NavigationBar {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
                 listOf("对话", "账本", "报表", "设置").forEachIndexed { index, title ->
                     NavigationBarItem(selected = tab == index, onClick = { tab = index },
                         icon = { Icon(when (index) {
@@ -85,12 +89,14 @@ import java.time.YearMonth
                             1 -> Icons.AutoMirrored.Outlined.ReceiptLong
                             2 -> Icons.Outlined.BarChart
                             else -> Icons.Outlined.Settings
-                        }, contentDescription = null) }, label = { Text(title) })
+                        }, contentDescription = null) }, label = { Text(title) },
+                        colors = NavigationBarItemDefaults.colors(indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                            selectedIconColor = MaterialTheme.colorScheme.primary, selectedTextColor = MaterialTheme.colorScheme.primary))
                 }
             }
         }
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
+        Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             when (tab) {
                 0 -> QuickEntryScreen(model, state, snackbar)
@@ -107,14 +113,15 @@ import java.time.YearMonth
     val start = month.atDay(1)
     val end = month.plusMonths(1).atDay(1)
     val summary = remember(state.entries, month) { summarize(state.entries, start, end) }
-    val entries = remember(state.entries, month) { state.entries.filter { it.occurredOn >= start.toString() && it.occurredOn < end.toString() } }
+    val entries = remember(state.entries, month) { state.entries.filter { it.occurredOn >= start.toString() && it.occurredOn < end.toString() }.sortedByDescending { it.occurredOn } }
     var selected by remember { mutableStateOf<LedgerEntry?>(null) }
     var deleteEntry by remember { mutableStateOf<LedgerEntry?>(null) }
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 108.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 32.dp)) {
         item {
-            Text("家庭账本", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-            Text(state.cloudStatus?.familyName?.let { "$it · 本机副本" } ?: "本机账本", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            PageHeading("家庭账本", state.cloudStatus?.familyName?.let { "$it · 本机副本" } ?: "本机账本") {
+                IconBadge(Icons.Outlined.MenuBook, sage = true)
+            }
             Spacer(Modifier.height(24.dp))
             PeriodSelector("${month.year} 年 ${month.monthValue} 月", { onMonth(month.minusMonths(1)) }, { onMonth(month.plusMonths(1)) })
             Spacer(Modifier.height(16.dp))
@@ -127,18 +134,25 @@ import java.time.YearMonth
             Spacer(Modifier.height(12.dp))
             if (state.loading) CircularProgressIndicator(Modifier.padding(24.dp))
             else if (entries.isEmpty()) {
-                Text("这个月还没有记录", Modifier.padding(top = 28.dp), style = MaterialTheme.typography.titleMedium)
-                Text("在「对话」中输入文字，记录日常收支。", Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                EmptyLedger("这个月还没有记录", "在「对话」中记下第一笔收支。")
             }
         }
-        items(entries, key = { it.id }) { entry ->
-            EntryRow(entry) { selected = entry }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .45f))
+        entries.groupBy { it.occurredOn }.forEach { (date, daily) ->
+            item(key = "day:$date") {
+                Row(Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(date, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${daily.size} 笔", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            items(daily, key = { it.id }) { entry ->
+                EntryRow(entry) { selected = entry }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .45f))
+            }
         }
     }
     selected?.let { entry ->
         AlertDialog(onDismissRequest = { selected = null }, title = { Text("${entry.type.label} ¥${Money.format(entry.amountMinor)}") },
-            text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("${entry.occurredOn} · ${entry.categoryL1} ${entry.categoryL2}")
                 Text("账户：${entry.account}"); Text("成员：${entry.member} · 记账人：${entry.recordedBy}")
                 if (entry.merchant.isNotBlank()) Text("商家：${entry.merchant}")
@@ -157,39 +171,61 @@ import java.time.YearMonth
 }
 
 @Composable private fun EntryRow(entry: LedgerEntry, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 15.dp), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        IconBadge(when (entry.type) {
+            EntryType.INCOME -> Icons.Outlined.SouthWest
+            EntryType.BALANCE_ADJUSTMENT -> Icons.Outlined.Tune
+            else -> when {
+                entry.categoryL1.contains("食品") || entry.categoryL1.contains("餐") -> Icons.Outlined.Restaurant
+                entry.categoryL1.contains("交通") -> Icons.Outlined.DirectionsBus
+                entry.categoryL1.contains("居") || entry.categoryL1.contains("家") -> Icons.Outlined.Home
+                else -> Icons.Outlined.ShoppingBag
+            }
+        }, sage = entry.type == EntryType.INCOME)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(entry.categoryL2.ifBlank { entry.categoryL1 }, style = MaterialTheme.typography.titleMedium,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("${entry.occurredOn.substring(5)} · ${entry.member} · ${entry.account}",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("${entry.member} · ${entry.account}", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (entry.note.isNotBlank()) Text(entry.note, style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Spacer(Modifier.width(12.dp))
         Text("${when(entry.type) { EntryType.INCOME -> "+"; EntryType.EXPENSE -> "−"; else -> "调整 " }}${Money.format(entry.amountMinor)}",
-            fontWeight = FontWeight.SemiBold, color = if (entry.type == EntryType.INCOME) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+            modifier = Modifier.widthIn(max = 152.dp), style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold, color = if (entry.type == EntryType.INCOME) LedgerSage else MaterialTheme.colorScheme.onSurface)
     }
 }
 
 @Composable internal fun PeriodSelector(label: String, previous: () -> Unit, next: () -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-        IconButton(onClick = previous) { Icon(Icons.Outlined.ChevronLeft, "上一期") }
-        Text(label, style = MaterialTheme.typography.titleMedium)
-        IconButton(onClick = next) { Icon(Icons.Outlined.ChevronRight, "下一期") }
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = RoundedCornerShape(18.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            IconButton(onClick = previous) { Icon(Icons.Outlined.ChevronLeft, "上一期") }
+            Crossfade(targetState = label, label = "period") { Text(it, style = MaterialTheme.typography.titleMedium) }
+            IconButton(onClick = next) { Icon(Icons.Outlined.ChevronRight, "下一期") }
+        }
     }
 }
 
 @Composable internal fun SummaryBlock(summary: Summary) {
-    Surface(color = MaterialTheme.colorScheme.primary, shape = MaterialTheme.shapes.large) {
-        Column(Modifier.fillMaxWidth().padding(24.dp)) {
-            Text("收支结余", style = MaterialTheme.typography.labelLarge)
-            Text("¥ ${Money.format(summary.balance)}", Modifier.padding(vertical = 12.dp),
-                style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Column { Text("收入", style = MaterialTheme.typography.labelMedium); Text("¥ ${Money.format(summary.income)}") }
-                Column { Text("支出", style = MaterialTheme.typography.labelMedium); Text("¥ ${Money.format(summary.expense)}") }
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        shape = MaterialTheme.shapes.large) {
+        Column(Modifier.fillMaxWidth().padding(22.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("本期收支结余", style = MaterialTheme.typography.labelLarge)
+                Icon(Icons.Outlined.AccountBalanceWallet, null, Modifier.size(20.dp), tint = LedgerSage)
+            }
+            Text("¥ ${Money.format(summary.balance)}", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+            HorizontalDivider(color = LedgerSage.copy(alpha = .16f))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text("收入", style = MaterialTheme.typography.labelMedium)
+                    Text("¥ ${Money.format(summary.income)}", style = MaterialTheme.typography.titleMedium)
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text("支出", style = MaterialTheme.typography.labelMedium)
+                    Text("¥ ${Money.format(summary.expense)}", style = MaterialTheme.typography.titleMedium)
+                }
             }
         }
     }

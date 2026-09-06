@@ -50,7 +50,7 @@ jobs:
         run: bash ./gradlew assembleDebug --stacktrace
       - name: Check cloud configuration and auth errors
         if: ${{ inputs.auth_checks && inputs.build_only }}
-        run: bash ./gradlew testDebugUnitTest --tests com.familyledger.app.data.CloudErrorsTest --tests com.familyledger.app.data.ChatCodecTest --stacktrace
+        run: bash ./gradlew testDebugUnitTest --tests com.familyledger.app.data.CloudErrorsTest --tests com.familyledger.app.data.ChatCodecTest --tests com.familyledger.app.data.FinanceContextTest --tests com.familyledger.app.data.SyncEngineTest --stacktrace
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
         with:

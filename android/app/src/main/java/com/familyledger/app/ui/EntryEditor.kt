@@ -7,6 +7,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -56,8 +60,9 @@ import java.util.UUID
                 }
             }
         }) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text("核对金额与归属，再保存这笔记录。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 listOf(EntryType.EXPENSE, EntryType.INCOME).forEach { type ->
                     FilterChip(selected = typeName == type.name, enabled = !busy, onClick = {
@@ -74,17 +79,21 @@ import java.util.UUID
                 if (origin.projectCategory.isNotEmpty()) Text("项目分类：${origin.projectCategory}", style = MaterialTheme.typography.bodySmall)
             }
             OutlinedTextField(amount, { amount = it }, label = { Text("金额（元）") }, prefix = { Text("¥ ") },
+                textStyle = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true,
                 enabled = !busy, modifier = Modifier.fillMaxWidth())
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            error?.let { Text(it, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = MaterialTheme.colorScheme.error) }
+            SectionHeading("账目详情")
             EditorField("日期 · YYYY-MM-DD", date, busy) { date = it }
             EditorField("一级分类", category, busy) { category = it }
             EditorField("二级分类（可选）", subcategory, busy) { subcategory = it }
             EditorField("账户", account, busy) { account = it }
+
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(member, { member = it }, label = { Text("归属成员") }, enabled = !busy, singleLine = true, modifier = Modifier.weight(1f))
                 OutlinedTextField(recorder, { recorder = it }, label = { Text("记账人") }, enabled = !busy, singleLine = true, modifier = Modifier.weight(1f))
             }
+            SectionHeading("补充信息", "选填，方便以后查找")
             EditorField("商家（可选）", merchant, busy) { merchant = it }
             EditorField("项目（可选）", project, busy) { project = it }
             OutlinedTextField(note, { note = it }, label = { Text("备注（可选）") }, minLines = 2, maxLines = 5,

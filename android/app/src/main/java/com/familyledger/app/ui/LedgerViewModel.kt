@@ -17,7 +17,7 @@ data class LedgerState(val entries: List<LedgerEntry> = emptyList(), val loading
     val chatMessages: List<ChatMessage> = emptyList(), val chatInput: String = "", val localRole: String = "本人",
     val cloudStatus: CloudStatus? = null, val cloudConflicts: List<CloudConflict> = emptyList(), val inviteCode: String? = null,
     val reportText: String? = null, val reportKey: String? = null, val cloudOpen: Boolean = false,
-    val autoSync: Boolean = false)
+    val autoSync: Boolean = false, val operationStatus: String? = null)
 
 class LedgerViewModel(private val repository: LedgerRepository, private val cloud: CloudService? = null) : ViewModel() {
     private val mutableState = MutableStateFlow(LedgerState())
@@ -49,29 +49,43 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         require(snapshot.quickDrafts.isEmpty()) { "请先确认或移除待保存记录" }
         require(snapshot.cloudStatus?.email != null && snapshot.cloudStatus.familyId != null) { "请先在设置中登录并创建或加入家庭" }
         val history = org.json.JSONArray().apply {
-            snapshot.chatMessages.takeLast(4).forEach { put(org.json.JSONObject().put("role", if (it.user) "user" else "assistant").put("text", it.context.take(1000))) }
+            snapshot.chatMessages.takeLast(8).forEach { put(org.json.JSONObject().put("role", if (it.user) "user" else "assistant").put("text", it.context.take(750))) }
         }
+        val rows = repository.allEntries()
+        val today = java.time.LocalDate.now()
+        val lastSync = snapshot.cloudStatus.lastSync.takeIf { it > 0 }?.let {
+            java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneId.systemDefault()).toLocalDateTime().toString()
+        } ?: "尚未成功同步"
+        val finance = withContext(Dispatchers.Default) { FinanceContext.build(rows, today, lastSync) }
         val input = org.json.JSONObject().put("text", text).put("today", java.time.LocalDate.now().toString())
             .put("role", snapshot.localRole).put("history", history)
-            .put("members", org.json.JSONArray(snapshot.entries.map { it.member }.distinct().take(40)))
-            .put("categories", org.json.JSONArray(snapshot.entries.flatMap { listOf(it.categoryL1, it.categoryL2) }.filter { it.isNotBlank() }.distinct().take(40)))
+            .put("finance", finance)
+            .put("members", org.json.JSONArray(snapshot.entries.map { it.member }.distinct().take(20)))
+            .put("categories", org.json.JSONArray(snapshot.entries.flatMap { listOf(it.categoryL1, it.categoryL2) }.filter { it.isNotBlank() }.distinct().take(20)))
         chatMessage(true, text)
-        mutableState.update { it.copy(chatInput = "") }
+        mutableState.update { it.copy(chatInput = "", operationStatus = "正在分析家庭账本…") }
         try {
             val result = ChatCodec.decode(requireCloud().ai("chat", input), snapshot.localRole)
             val answer = result.query?.let { query ->
-                val rows = repository.allEntries()
-                withContext(Dispatchers.Default) { ChatCodec.answer(query, rows) }
+                mutableState.update { it.copy(operationStatus = "正在解读查询结果…") }
+                val selected = withContext(Dispatchers.Default) { FinanceContext.build(rows, today, lastSync, query) }
+                try {
+                    requireCloud().ai("analyze", org.json.JSONObject().put("text", text).put("history", history).put("finance", selected))
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    "AI 解读暂未完成：${e.message ?: "服务暂不可用"}。以下为程序计算的查询结果：\n\n" +
+                        withContext(Dispatchers.Default) { ChatCodec.answer(query, rows) }
+                }
             }
-            // Do not feed locally calculated financial results back to the model.
-            val context = if (result.query != null) "查询条件：${org.json.JSONObject().put("start", result.query.start).put("end", result.query.end).put("member", result.query.member).put("category", result.query.category).put("keyword", result.query.keyword)}" else result.reply
-            chatMessage(false, if (answer != null) result.reply + "\n\n" + answer else result.reply, context)
+            // Preserve the actual answer for follow-up questions, not only the query filter.
+            val reply = answer ?: result.reply
+            chatMessage(false, reply)
             mutableState.update { it.copy(quickDrafts = result.entries) }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             chatMessage(false, "发送失败：${e.message ?: "服务暂不可用"}\n内容已放回输入框，可以重试。", "上次请求失败，没有保存记录。")
             mutableState.update { it.copy(chatInput = text) }
-        }
+        } finally { mutableState.update { it.copy(operationStatus = null) } }
     }
     fun saveQuickDrafts() = perform {
         val rows = state.value.quickDrafts
@@ -100,9 +114,11 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
     fun setAutoSync(enabled: Boolean) = perform { requireCloud().setAutoSyncEnabled(enabled); mutableState.update { it.copy(autoSync = enabled) } }
     fun onForeground() { if (state.value.autoSync && state.value.cloudStatus?.email != null && state.value.cloudStatus?.familyId != null && !state.value.loading) syncCloud() }
     fun syncCloud() = perform {
-        val result = requireCloud().sync(repository.allEntries(), repository::applyRemote)
+        val result = requireCloud().sync(repository.allEntries(), applyRemote = repository::applyRemote,
+            onProgress = { progress -> mutableState.update { it.copy(operationStatus = progress) } })
         refreshCloud()
-        mutableState.update { it.copy(cloudConflicts = result.conflicts, message = "已上传 ${result.uploaded} 条、下载 ${result.downloaded} 条，${result.conflicts.size} 条冲突待处理") }
+        mutableState.update { it.copy(cloudConflicts = result.conflicts, message =
+            "同步完成，用时 ${(result.elapsedMillis + 999) / 1000} 秒、${result.requestCount} 次请求；上传 ${result.uploaded} 条、下载 ${result.downloaded} 条，${result.conflicts.size} 条冲突") }
     }
     fun resolveConflict(conflict: CloudConflict, useRemote: Boolean) = perform {
         val current = repository.allEntries().firstOrNull { it.id == conflict.id }
@@ -210,7 +226,7 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
             try { block() }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (e: Exception) { mutableState.update { it.copy(message = e.message ?: "操作失败，请重试") } }
-            finally { mutableState.update { it.copy(busy = false) } }
+            finally { mutableState.update { it.copy(busy = false, operationStatus = null) } }
         }
     }
     private fun readLimited(input: java.io.InputStream, limit: Int): ByteArray {

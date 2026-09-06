@@ -18,7 +18,7 @@ object ChatCodec {
         val root = JSONObject(text)
         require(root.keys().asSequence().toSet() == setOf("reply", "entries", "query")) { "回复格式无效，请重试" }
         val reply = root.get("reply") as? String ?: error("回复格式无效")
-        require(reply.isNotBlank() && reply.length <= 3000)
+        require(reply.isNotBlank() && reply.length <= 6000)
         val raw = root.getJSONArray("entries")
         val entries = if (raw.length() == 0) emptyList() else QuickEntryCodec.cloud(JSONObject().put("entries", raw).toString()).map {
             it.copy(member = if (it.member.trim() in setOf("本人", "我", "未指定")) who else it.member, recordedBy = who)
@@ -34,16 +34,20 @@ object ChatCodec {
         return ChatResult(reply, entries, query)
     }
 
-    fun answer(query: ChatQuery, entries: List<LedgerEntry>): String {
-        val start = LocalDate.parse(validateDate(query.start)); val end = LocalDate.parse(validateDate(query.end))
-        require(start < end)
-        val rows = entries.filter { e ->
+    fun select(query: ChatQuery, entries: List<LedgerEntry>): List<LedgerEntry> {
+        require(LocalDate.parse(validateDate(query.start)) < LocalDate.parse(validateDate(query.end)))
+        return entries.filter { e ->
             e.deletedAt == null && e.currency == "CNY" && e.type != EntryType.BALANCE_ADJUSTMENT &&
                 e.occurredOn >= query.start && e.occurredOn < query.end &&
                 (query.member.isBlank() || e.member == query.member) &&
                 (query.category.isBlank() || e.categoryL1 == query.category || e.categoryL2 == query.category) &&
                 (query.keyword.isBlank() || listOf(e.note, e.merchant, e.project, e.account, e.categoryL1, e.categoryL2).any { query.keyword in it })
         }
+    }
+
+    fun answer(query: ChatQuery, entries: List<LedgerEntry>): String {
+        val start = LocalDate.parse(validateDate(query.start)); val end = LocalDate.parse(validateDate(query.end))
+        val rows = select(query, entries)
         val summary = summarize(rows, start, end)
         return buildString {
             appendLine("${query.start} 至 ${end.minusDays(1)}")
