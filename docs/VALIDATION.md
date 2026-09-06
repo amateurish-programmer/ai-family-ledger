@@ -1,5 +1,13 @@
 # 验证记录
 
+## V0.6.0 内置云服务与注册排查
+
+- 构建提交 `11cc5a97383a4a2dee838b8cf1e8c527147b5ae6`，云端运行 https://github.com/amateurish-programmer/ai-family-ledger/actions/runs/34004326878 成功。
+- 使用 `build_only=true`、`auth_checks=true`；APK 编译成功，`CloudErrorsTest` 七项测试通过、零失败。覆盖已知/未知错误、安全提示、Auth 限流与不同项目身份保护；不代表真实邮件、注册或同步验收通过。
+- 已下载 `AI-Family-Ledger-debug-11` 到 `dist/apk/app-debug-v0.6.0.apk`，17,614,787 字节；SHA-256 `A52130784D190AB38FB17345E73130DAF145443F0BF375A84CE8C2273C9B8E76`。
+- 只针对本轮改动运行检查，未运行完整测试、lint、模拟器或真机验收；未读取 SMTP 密码、未发送测试邮件或创建测试用户。
+- 注册故障：09:22 手机 signup HTTP 500 对应 Auth 日志中的 QQ SMTP `535 Login fail`。控制台截图确认 Username 被拼接为两遍发件邮箱。已改回单个邮箱并保存；重新载入页面后确认用户名正确、保存按钮禁用。实际注册及邮件投递尚待用户重试，不声称端到端成功。
+
 ## V0.5.0 连续开发记录
 
 用户最新要求“完成后继续进行后续阶段，无需验证”。本轮仅安排 APK 编译，不执行 JVM 测试、lint、模拟器、真机或云端功能验收。以下 V0.1 通过记录仅适用于旧版，不能作为 V0.5 新功能通过的证据。

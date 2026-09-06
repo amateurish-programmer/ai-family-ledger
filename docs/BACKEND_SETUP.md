@@ -2,17 +2,19 @@
 
 2026-09-06 已部署到用户的 Supabase 项目“记账工具”：数据库迁移 `202609060001` 已应用，五张业务/私有表启用 RLS，`ledger-ai` Edge Function 已上线。模型配置为 DeepSeek `deepseek-v4-flash`，API Key 由用户在 Supabase Secrets 中保存，部署工具只确认名称存在，未读取密钥值。未进行手机、多账号同步或真实模型请求验收。Android 客户端已随 V0.5 APK 编译成功。
 
-## 当前项目与手机配置
+## 当前项目与内置配置
 
 - 项目根 URL：`https://xdgeybztysuvvwagqkvb.supabase.co`
 - Android 公开 key：`sb_publishable_DMkKHBxMWwQ-j-hWvj-cuw_pE8R4NH-`
 - [项目控制台](https://supabase.com/dashboard/project/xdgeybztysuvvwagqkvb)，区域为用户创建时选定的 East US (Ohio)。
 - [AI 函数](https://supabase.com/dashboard/project/xdgeybztysuvvwagqkvb/functions)，模型地址 `https://api.deepseek.com`，通过服务端访问；手机不填写 DeepSeek 密钥。
-- App → 设置 → 家庭登录、同步与 AI 配置：填写上面两项并保存，再使用独立的 App 邮箱账号登录。Supabase 控制台的 GitHub 登录不等于 App 登录。
+- V0.6 已在 `CloudEndpoint.kt` 内置上面两项公开参数，普通用户无需配置。App → 设置 → 家庭账号与同步：使用独立的 App 邮箱账号注册或登录。Supabase 控制台的 GitHub 登录不等于 App 登录。V0.5 同项目配置自动接续；其他项目已有身份或同步索引时拒绝迁移，保留本机数据。
 - 当前邮箱密码注册已开启，要求邮箱验证；QQ 邮箱自定义 SMTP 已由用户填入授权码并保存。刷新后确认 SMTP 开关开启、服务器 `smtp.qq.com`、SSL 端口 `465`、发件人名称“AI 家庭账本”，保存按钮为禁用状态（无待保存更改）。未读取授权码，未发送测试邮件，实际投递未验收。自定义 SMTP 用于家庭成员注册验证邮件，见[官方说明](https://supabase.com/docs/guides/auth/auth-smtp)。
 - 登录后创建家庭；其他成员使用各自账号登录，再输入家庭创建者生成的一次性邀请码。
 
 上述公开 key 用于标识项目，权限由用户登录和 RLS 决定；它不是 service_role 或 DeepSeek 密钥。
+
+2026-09-06 注册故障修正：Auth 日志记录 QQ SMTP `535 Login fail`；发现 SMTP Username 被重复拼接为两遍邮箱。已改回单个邮箱并保存，刷新页面确认持久生效；原授权码保留。仍未代用户发起注册邮件，实际投递需重试确认，详见 [V0.6 记录](V0.6.md)。
 
 ## 部署步骤
 
@@ -20,7 +22,7 @@
 2. 使用 Supabase SQL Editor 执行 `supabase/migrations/202609060001_family_cloud.sql`，或者通过 Supabase CLI 关联自己的项目并执行数据库迁移。脚本按首次新建表设计；后续修改应新增迁移，不能删表重建生产账本。
 3. 通过 Dashboard 的 Edge Function Secrets 或自己的本地安全环境配置 `OPENAI_API_KEY`、`OPENAI_MODEL`，可选 `OPENAI_BASE_URL`（默认 `https://api.openai.com/v1`，必须是支持 Chat Completions / JSON object 输出的 HTTPS 服务根路径）。例如供应商根地址为 `https://api.example.com/v1`，函数自行追加 `/chat/completions`。不要把这些值写入仓库或 Android。Supabase 自动提供 `SUPABASE_URL`、`SUPABASE_ANON_KEY`、`SUPABASE_SERVICE_ROLE_KEY`。
 4. 部署 `supabase/functions/ledger-ai`。`supabase/config.toml` 对该函数配置 `verify_jwt=false`，函数内部仍强制向 Auth 服务验证用户，并检查家庭成员关系，不能删除此校验。无需把 service_role 配置到手机。
-5. Android 设置页输入项目根 URL 与公开 anon / publishable key。只允许 `https://项目标识.supabase.co`，暂不支持自定义域、localhost、自托管、显式端口、路径或重定向。首次登录后创建家庭，家庭创建者生成邀请码，其他账号登录后输入邀请码加入。
+5. 维护者在 `CloudEndpoint.kt` 配置项目根 URL 与公开 key 后构建 APK；V0.6 已内置当前项目，用户界面不提供配置输入。只允许 `https://项目标识.supabase.co`，暂不支持自定义域、localhost、自托管、显式端口、路径或重定向。首次登录后创建家庭，家庭创建者生成邀请码，其他账号登录后输入邀请码加入。
 
 官方配置参考：[Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security)、[Edge Function Auth](https://supabase.com/docs/guides/functions/auth)、[DeepSeek 思考模式](https://api-docs.deepseek.com/zh-cn/guides/thinking_mode/)。函数仅对官方 `api.deepseek.com` 设置 `thinking.type=disabled`，继续要求 JSON object 输出；其他兼容供应商不附加该参数。当前部署状态以上节为准。
 
