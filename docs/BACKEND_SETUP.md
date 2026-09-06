@@ -9,7 +9,7 @@
 - [项目控制台](https://supabase.com/dashboard/project/xdgeybztysuvvwagqkvb)，区域为用户创建时选定的 East US (Ohio)。
 - [AI 函数](https://supabase.com/dashboard/project/xdgeybztysuvvwagqkvb/functions)，模型地址 `https://api.deepseek.com`，通过服务端访问；手机不填写 DeepSeek 密钥。
 - App → 设置 → 家庭登录、同步与 AI 配置：填写上面两项并保存，再使用独立的 App 邮箱账号登录。Supabase 控制台的 GitHub 登录不等于 App 登录。
-- 当前邮箱密码注册已开启，要求邮箱验证；自定义 SMTP 邮件配置待完成。Supabase 默认邮件服务仅支持项目团队邮箱，不能直接作为家庭成员注册邮件服务，见[官方说明](https://supabase.com/docs/guides/auth/auth-smtp)。
+- 当前邮箱密码注册已开启，要求邮箱验证；QQ 邮箱自定义 SMTP 已由用户填入授权码并保存。刷新后确认 SMTP 开关开启、服务器 `smtp.qq.com`、SSL 端口 `465`、发件人名称“AI 家庭账本”，保存按钮为禁用状态（无待保存更改）。未读取授权码，未发送测试邮件，实际投递未验收。自定义 SMTP 用于家庭成员注册验证邮件，见[官方说明](https://supabase.com/docs/guides/auth/auth-smtp)。
 - 登录后创建家庭；其他成员使用各自账号登录，再输入家庭创建者生成的一次性邀请码。
 
 上述公开 key 用于标识项目，权限由用户登录和 RLS 决定；它不是 service_role 或 DeepSeek 密钥。
