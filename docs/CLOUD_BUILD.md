@@ -23,7 +23,7 @@ Artifact 的网页下载需要登录有权访问该仓库的 GitHub 账号。构
 
 手动 Run workflow 时可勾选 `device_tests`，额外启动 Android 35 模拟器，验证 Room 跨实例持久化、恢复幂等和录入 UI。设备测试与 APK 构建并行执行；该步骤耗时与 Actions 用量高于普通构建。测试报告保存在 `Android-device-tests-运行序号`，录入截图位于报告的 `diagnostics/ledger-screens` 目录。
 
-`build_only` 只运行 `assembleDebug`，跳过 JVM 测试和 lint；本轮按用户“无需验证”要求使用此选项且不勾选设备测试。不能把仅编译成功表述为功能验证通过。
+`build_only` 只运行 `assembleDebug`，跳过 JVM 测试和 lint；可同时勾选 auth_checks 运行重点行为测试；V0.8 使用 build_only、auth_checks 和 device_tests 生成 APK 与界面证据。不能把仅编译成功表述为功能验证通过。
 
 ## 签名
 
@@ -31,4 +31,4 @@ Debug APK 使用项目内固定的公开开发签名，便于同包名版本覆�
 
 ## 后端状态
 
-V0.5 本机记账无需 Supabase 或大模型配置。家庭同步/AI 服务源码在 supabase，实际部署与配置见 [BACKEND_SETUP.md](BACKEND_SETUP.md)。不要把 service_role 或模型密钥写入 Android 工程。没有后台配置时，离线记账、Excel、简单整理及确定性报告仍可使用。
+V0.8 已内置公开云服务配置，登录并加入家庭即可对话。已保存账目查看和编辑无需网络。家庭同步/AI 服务源码在 supabase，实际部署与配置见 [BACKEND_SETUP.md](BACKEND_SETUP.md)。不要把 service_role 或模型密钥写入 Android 工程。没有后台配置时，离线记账、Excel、简单整理及确定性报告仍可使用。
