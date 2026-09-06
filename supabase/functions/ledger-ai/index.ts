@@ -145,7 +145,8 @@ Deno.serve(async (request: Request): Promise<Response> => {
     if (allowed !== true) throw new RequestError(429, "AI 请求过于频繁或今日额度已用完");
     const completion = record(await fetchJson(endpoint.toString().replace(/\/$/, "") + "/chat/completions", {
       method: "POST", headers: { Authorization: "Bearer " + providerKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ model, temperature: 0, max_tokens: 2500, response_format: { type: "json_object" }, messages: [
+      body: JSON.stringify({ model, temperature: 0, max_tokens: 2500, response_format: { type: "json_object" },
+        ...(endpoint.hostname === "api.deepseek.com" ? { thinking: { type: "disabled" } } : {}), messages: [
         { role: "system", content: body.operation === "parse" ? parsePrompt : reportPrompt },
         { role: "user", content: JSON.stringify(input) },
       ] }),

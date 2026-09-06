@@ -1,6 +1,18 @@
 # 家庭云同步与 AI 服务配置
 
-本目录交付 Supabase SQL 迁移、Edge Function 和 Android 客户端源码。Android 客户端已随 V0.5 APK 编译成功；尚未创建或部署实际云服务，未进行本轮测试、设备、权限隔离或云端验收，SQL/函数也未在真实项目执行。已有旧版本验证不覆盖这些新增功能。没有请求、保存或提交任何真实生产密钥。
+2026-09-06 已部署到用户的 Supabase 项目“记账工具”：数据库迁移 `202609060001` 已应用，五张业务/私有表启用 RLS，`ledger-ai` Edge Function 已上线。模型配置为 DeepSeek `deepseek-v4-flash`，API Key 由用户在 Supabase Secrets 中保存，部署工具只确认名称存在，未读取密钥值。未进行手机、多账号同步或真实模型请求验收。Android 客户端已随 V0.5 APK 编译成功。
+
+## 当前项目与手机配置
+
+- 项目根 URL：`https://xdgeybztysuvvwagqkvb.supabase.co`
+- Android 公开 key：`sb_publishable_DMkKHBxMWwQ-j-hWvj-cuw_pE8R4NH-`
+- [项目控制台](https://supabase.com/dashboard/project/xdgeybztysuvvwagqkvb)，区域为用户创建时选定的 East US (Ohio)。
+- [AI 函数](https://supabase.com/dashboard/project/xdgeybztysuvvwagqkvb/functions)，模型地址 `https://api.deepseek.com`，通过服务端访问；手机不填写 DeepSeek 密钥。
+- App → 设置 → 家庭登录、同步与 AI 配置：填写上面两项并保存，再使用独立的 App 邮箱账号登录。Supabase 控制台的 GitHub 登录不等于 App 登录。
+- 当前邮箱密码注册已开启，要求邮箱验证；自定义 SMTP 邮件配置待完成。Supabase 默认邮件服务仅支持项目团队邮箱，不能直接作为家庭成员注册邮件服务，见[官方说明](https://supabase.com/docs/guides/auth/auth-smtp)。
+- 登录后创建家庭；其他成员使用各自账号登录，再输入家庭创建者生成的一次性邀请码。
+
+上述公开 key 用于标识项目，权限由用户登录和 RLS 决定；它不是 service_role 或 DeepSeek 密钥。
 
 ## 部署步骤
 
@@ -10,7 +22,7 @@
 4. 部署 `supabase/functions/ledger-ai`。`supabase/config.toml` 对该函数配置 `verify_jwt=false`，函数内部仍强制向 Auth 服务验证用户，并检查家庭成员关系，不能删除此校验。无需把 service_role 配置到手机。
 5. Android 设置页输入项目根 URL 与公开 anon / publishable key。只允许 `https://项目标识.supabase.co`，暂不支持自定义域、localhost、自托管、显式端口、路径或重定向。首次登录后创建家庭，家庭创建者生成邀请码，其他账号登录后输入邀请码加入。
 
-官方配置参考：[Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security)、[Edge Function Auth](https://supabase.com/docs/guides/functions/auth)。这里只提供可部署代码和步骤，不代表上述操作已执行。
+官方配置参考：[Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security)、[Edge Function Auth](https://supabase.com/docs/guides/functions/auth)、[DeepSeek 思考模式](https://api-docs.deepseek.com/zh-cn/guides/thinking_mode/)。函数仅对官方 `api.deepseek.com` 设置 `thinking.type=disabled`，继续要求 JSON object 输出；其他兼容供应商不附加该参数。当前部署状态以上节为准。
 
 ## 数据、身份与权限
 
@@ -56,4 +68,4 @@ Android `CloudService` 使用 `HttpURLConnection`、`org.json` 和 IO 协程，�
 
 ## 待验收边界
 
-本轮遵照用户要求不运行新增验证或部署。正式使用真实家庭数据前仍需单独验收：SQL 迁移、成员/非成员/匿名 RLS、邀请并发消费与过期、CAS 同时编辑与删除、离线重试、登录刷新/退出、跨家庭拒绝、应用重启后 Keystore 解密、设备前台自动同步、AI 配额及真实供应商兼容。没有实测结果的项目不能宣称已通过。
+本轮按用户后续授权完成数据库和函数部署，保留“不运行功能验收”的要求。初次迁移因 PL/pgSQL 条件中的 CASE 表达式缺少括号而失败，确认事务回滚后修正三处同类写法，再次迁移成功并记录版本。读取表元数据确认 RLS 开启不代表权限行为验收通过。仍未验收成员/非成员/匿名访问、邀请并发消费与过期、CAS 同时编辑与删除、离线重试、登录刷新/退出、跨家庭拒绝、应用重启后 Keystore 解密、设备前台自动同步、AI 配额及真实模型请求。没有实测结果的项目不能宣称已通过。

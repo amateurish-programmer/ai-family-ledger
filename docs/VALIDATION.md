@@ -12,7 +12,7 @@
 - 构建提交：`95d3211da31f890cfba086dc9ce28e62f2793fcf`；APK：`AI-Family-Ledger-debug-10`。这代表编译完成，不代表新增功能验收通过。
 - APK Artifact ID：`9979210047`；已下载到 `dist/apk/app-debug-v0.5.0.apk`，大小 17,614,787 字节。
 - 构建生成的 Room V2 schema 已保存到 `android/app/schemas/com.familyledger.app.data.LedgerDatabase/2.json`。
-- 实际 Supabase 项目、邮箱账号流程、数据库权限、跨设备同步与模型请求尚未部署或验收。
+- 2026-09-06 后续部署：Supabase 项目 `xdgeybztysuvvwagqkvb` 已应用迁移 `202609060001`，`ledger-ai` 部署成功；只读取迁移记录、RLS 开关、Auth 公开设置及密钥名称。DeepSeek API Key 已由用户保存；邮箱账号流程、数据库权限行为、跨设备同步与真实模型请求未验收。详情见 [云端服务说明](BACKEND_SETUP.md)。
 - 真实 XLSX 保留在本机，源码包和 Git 使用明确文件清单，不包含原始账本或凭据。
 
 ## V0.1.0 历史验证

@@ -132,7 +132,7 @@ begin
     or v_row->>'currency' <> 'CNY' then raise exception 'invalid_entry_identity'; end if;
   if jsonb_typeof(v_row->'amountMinor') is distinct from 'number' or (v_row->>'amountMinor') !~ '^-?[0-9]+$' then raise exception 'integer_amount_required'; end if;
   v_amount := (v_row->>'amountMinor')::bigint;
-  if v_amount > 99999999999 or v_amount < case when v_row->>'type' = 'BALANCE_ADJUSTMENT' then -99999999999 else 1 end then raise exception 'amount_out_of_range'; end if;
+  if v_amount > 99999999999 or v_amount < (case when v_row->>'type' = 'BALANCE_ADJUSTMENT' then -99999999999 else 1 end) then raise exception 'amount_out_of_range'; end if;
   if (v_row->>'occurredOn') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' then raise exception 'invalid_date'; end if;
   v_date := (v_row->>'occurredOn')::date;
   if to_char(v_date, 'YYYY-MM-DD') <> v_row->>'occurredOn' or extract(year from v_date) not between 1 and 9999 then raise exception 'invalid_date'; end if;
@@ -153,7 +153,7 @@ begin
     if jsonb_typeof(v_row->'origin'->'fileHash') is distinct from 'string' or (v_row->'origin'->>'fileHash') !~ '^[0-9a-f]{64}$'
       or jsonb_typeof(v_row->'origin'->'rawFields') is distinct from 'object' then raise exception 'invalid_origin'; end if;
     foreach v_key in array array['fileName','sheet','originalDate','account2','projectCategory'] loop
-      if jsonb_typeof(v_row->'origin'->v_key) is distinct from 'string' or length(v_row->'origin'->>v_key) > case when v_key='fileName' then 255 else 100 end then raise exception 'invalid_origin_text'; end if;
+      if jsonb_typeof(v_row->'origin'->v_key) is distinct from 'string' or length(v_row->'origin'->>v_key) > (case when v_key='fileName' then 255 else 100 end) then raise exception 'invalid_origin_text'; end if;
     end loop;
     foreach v_key in array array['rowNumber','importedAt'] loop
       if jsonb_typeof(v_row->'origin'->v_key) is distinct from 'number' or (v_row->'origin'->>v_key) !~ '^[0-9]+$'
@@ -204,7 +204,7 @@ begin
         day_count=case when ai_usage.day_at = date_trunc('day',v_now) then ai_usage.day_count+1 else 1 end,
         day_at=date_trunc('day',v_now)
       returning minute_count,day_count into v_minute,v_day;
-    if v_minute > case when v_global then 30 else 5 end or v_day > case when v_global then 300 else 30 end then return false; end if;
+    if v_minute > (case when v_global then 30 else 5 end) or v_day > (case when v_global then 300 else 30 end) then return false; end if;
   end loop;
   return true;
 end;
