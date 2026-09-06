@@ -68,8 +68,22 @@ class ConversationPersistenceTest {
             repo.confirmChatDrafts("a", listOf(draft))
             assertTrue(repo.chatDrafts("a").isEmpty())
             assertEquals(1, repo.allEntries().size)
+            assertTrue(repo.chatMessages("a").single().text.contains("已保存 1 笔"))
             assertTrue(runCatching { repo.confirmChatDrafts("a", listOf(draft)) }.isFailure)
             assertEquals(1, repo.allEntries().size)
+        } finally { db.close() }
+    }
+
+    @Test fun confirmationMessageFailureRollsBackLedgerAndKeepsDrafts() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(context, LedgerDatabase::class.java).build()
+        try {
+            val repo = LedgerRepository(db)
+            repo.saveChatDrafts("a", listOf(draft))
+            db.openHelper.writableDatabase.execSQL("CREATE TRIGGER reject_chat BEFORE INSERT ON chat_messages BEGIN SELECT RAISE(ABORT, 'synthetic message failure'); END")
+            assertTrue(runCatching { repo.confirmChatDrafts("a", listOf(draft)) }.isFailure)
+            assertTrue(repo.allEntries().isEmpty())
+            assertEquals(listOf(draft), repo.chatDrafts("a"))
+            assertTrue(repo.chatMessages("a").isEmpty())
         } finally { db.close() }
     }
 

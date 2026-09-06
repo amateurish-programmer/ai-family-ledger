@@ -21,7 +21,9 @@ class LedgerRepository(private val database: LedgerDatabase) {
     suspend fun confirmChatDrafts(owner: String, rows: List<LedgerEntry>) = database.withTransaction {
         require(chatDrafts(owner) == rows) { "待确认记录已变化，请重新查看" }
         saveMany(rows)
-        saveChatDrafts(owner, emptyList())
+        val confirmation = ChatMessage(java.util.UUID.randomUUID().toString(), false, "已保存 ${rows.size} 笔记录。可以继续记账或提问。")
+        appendChat(owner, confirmation, emptyList())
+        confirmation
     }
     val entries = dao.observeActive().map { rows -> rows.map { it.toEntry() } }
     suspend fun save(entry: LedgerEntry) = dao.save(EntryEntity.from(validateEntry(entry).copy(updatedAt = System.currentTimeMillis())))

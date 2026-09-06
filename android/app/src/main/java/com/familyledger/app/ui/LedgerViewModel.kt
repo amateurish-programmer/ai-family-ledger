@@ -70,6 +70,8 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         mutableState.update { it.copy(quickDrafts = drafts) }
     }
     fun sendChat() = perform {
+        restoreConversation()
+        check(chatOwner == (cloud?.conversationOwner() ?: "local")) { "账号已改变，请重新发送" }
         val snapshot = state.value
         val text = snapshot.chatInput.trim()
         require(text.isNotBlank() && text.length <= 2000) { "内容须为 1 至 2000 字" }
@@ -116,18 +118,17 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
     fun saveQuickDrafts() = perform {
         val rows = state.value.quickDrafts
         require(rows.isNotEmpty())
-        repository.confirmChatDrafts(chatOwner ?: error("对话尚未加载"), rows)
-        mutableState.update { it.copy(quickDrafts = emptyList()) }
-        chatMessage(false, "已保存 ${rows.size} 笔记录。可以继续记账或提问。")
+        val confirmation = repository.confirmChatDrafts(chatOwner ?: error("对话尚未加载"), rows)
+        mutableState.update { it.copy(quickDrafts = emptyList(), chatMessages = it.chatMessages + confirmation) }
     }
     private fun requireCloud() = cloud ?: error("云端组件未初始化")
     fun openCloud() { mutableState.update { it.copy(cloudOpen = true) }; refreshCloud() }
     fun closeCloud() { if (!state.value.busy) mutableState.update { it.copy(cloudOpen = false) } }
     fun login(email: String, password: String, signup: Boolean) = perform {
+        try {
         if (signup) { val message = requireCloud().signUp(email.trim(), password); mutableState.update { it.copy(message = message) } }
         else { requireCloud().login(email.trim(), password); mutableState.update { it.copy(message = "已登录") } }
-        refreshCloud()
-        restoreConversation()
+        } finally { refreshCloud(); restoreConversation() }
     }
     fun logout() = perform { requireCloud().logout(); refreshCloud(); restoreConversation()
         mutableState.update { it.copy(cloudConflicts = emptyList(), inviteCode = null, message = "已退出登录，对话与本机账本保留") } }
@@ -143,9 +144,9 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         requireCloud().updateFamilyProfile(name, icon); refreshCloud()
         mutableState.update { it.copy(message = "家庭资料已更新，家人刷新或同步后可见") }
     }
-    fun refreshFamily() = perform { requireCloud().refreshFamily(); refreshCloud() }
-    fun createFamily(name: String) = perform { requireCloud().createFamily(name.trim()); refreshCloud() }
-    fun joinFamily(code: String) = perform { requireCloud().joinFamily(code.trim()); refreshCloud() }
+    fun refreshFamily() = perform { try { requireCloud().refreshFamily() } finally { refreshCloud(); restoreConversation() } }
+    fun createFamily(name: String) = perform { try { requireCloud().createFamily(name.trim()) } finally { refreshCloud(); restoreConversation() } }
+    fun joinFamily(code: String) = perform { try { requireCloud().joinFamily(code.trim()) } finally { refreshCloud(); restoreConversation() } }
     fun createInvite() = perform { val code = requireCloud().createInvite(); mutableState.update { it.copy(inviteCode = code) } }
     private fun refreshCloud() {
         try { val status = cloud?.status(); val role = cloud?.localRole() ?: "本人"; val avatar = cloud?.localAvatar() ?: "person"
