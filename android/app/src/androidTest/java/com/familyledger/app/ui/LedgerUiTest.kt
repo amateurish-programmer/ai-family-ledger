@@ -10,16 +10,19 @@ import org.junit.*
 class LedgerUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
-    @Test fun recordExpenseAndSeeItInLedger() {
-        awaitNode(hasContentDescription("记一笔"))
-        compose.onNodeWithContentDescription("记一笔").assertHasClickAction().performClick()
-        compose.onNodeWithText("金额（元）").performTextInput("36.80")
-        compose.onNodeWithText("保存记录").performClick()
-        awaitText("−36.80")
-        compose.onNodeWithText("−36.80").assertIsDisplayed()
-        screenshot("ledger-recorded.png")
-        compose.onNodeWithText("报表").performClick()
-        compose.onNodeWithText("支出去向").assertExists()
+    @Test fun singleTextEntryAndEditableLocalRole() {
+        awaitText("账本助手")
+        compose.onNodeWithText("发送").assertExists()
+        compose.onNodeWithText("语音输入").assertDoesNotExist()
+        compose.onNodeWithContentDescription("记一笔").assertDoesNotExist()
+        compose.onNodeWithText("记收支，或问问账本…").performTextInput("午饭 36.80 元")
+        compose.onNodeWithText("设置").performClick()
+        compose.onNodeWithText("角色名称，例如老公、老婆").performTextReplacement("老公")
+        compose.onNodeWithText("保存角色").performClick()
+        compose.onNodeWithText("对话").performClick()
+        awaitText("老公 · 本机账本")
+        compose.onNodeWithText("午饭 36.80 元").assertExists()
+        screenshot("ledger-chat.png")
     }
 
     private fun awaitText(text: String) {

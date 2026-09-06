@@ -36,7 +36,7 @@ import java.util.UUID
     var discard by remember { mutableStateOf(false) }
     BackHandler { if (!busy) discard = true }
 
-    Scaffold(topBar = { TopAppBar(title = { Text(if (existing == null) "记一笔" else "编辑记录") },
+    Scaffold(topBar = { TopAppBar(title = { Text("编辑记录") },
         navigationIcon = { IconButton(onClick = { discard = true }, enabled = !busy) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回") } }) },
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {

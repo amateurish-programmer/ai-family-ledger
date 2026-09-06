@@ -18,6 +18,7 @@ import com.familyledger.app.domain.ImportBatch
 @Composable fun SettingsScreen(model: LedgerViewModel, state: LedgerState) {
     val resolver = LocalContext.current.contentResolver
     var rollback by remember { mutableStateOf<ImportBatch?>(null) }
+    var role by remember(state.localRole) { mutableStateOf(state.localRole) }
     val importExcel = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let { model.previewImport(resolver, it) } }
     val exportExcel = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(XlsxCodec.MIME)) { uri -> uri?.let { model.exportSpreadsheet(resolver, it) } }
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
@@ -29,6 +30,12 @@ import com.familyledger.app.domain.ImportBatch
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("账本设置", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
         Text("本机账本 · ${state.entries.size} 笔记录", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("本机角色", style = MaterialTheme.typography.titleLarge)
+        Text(state.cloudStatus?.email ?: "未登录 · 本机角色", style = MaterialTheme.typography.bodySmall)
+        OutlinedTextField(role, { if (it.length <= 20) role = it }, label = { Text("角色名称，例如老公、老婆") }, singleLine = true,
+            enabled = !state.busy, modifier = Modifier.fillMaxWidth())
+        Button(onClick = { model.setLocalRole(role) }, enabled = !state.busy && role.isNotBlank() && role.trim() != state.localRole) { Text("保存角色") }
+        Text("新账目默认归属此角色；更改不会修改已有记录，也不会改变家庭权限。", style = MaterialTheme.typography.bodySmall)
         OutlinedButton(onClick = model::openCloud, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("家庭账号与同步") }
         Spacer(Modifier.height(8.dp))
         Text("历史账本", style = MaterialTheme.typography.titleLarge)
@@ -58,9 +65,9 @@ import com.familyledger.app.domain.ImportBatch
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         HorizontalDivider(Modifier.padding(vertical = 12.dp))
         Text("当前版本", style = MaterialTheme.typography.titleLarge)
-        Text("V0.5.0 · 家庭账本")
-        Text("手工/一句话/语音记账、Excel 导入导出、月报/年报、成员趋势与备份。")
-        Text("登录并加入家庭后，可使用家庭同步与 AI 整理。离线记账随时可用，语音识别由手机服务提供。",
+        Text("V0.7.0 · 家庭账本")
+        Text("文字对话记账、账本问答、家庭角色、Excel 导入导出、月报/年报与备份。")
+        Text("登录并加入家庭后，可使用对话与家庭同步。已保存账目可离线查看和编辑。",
             color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     rollback?.let { batch -> AlertDialog(onDismissRequest = { rollback = null }, title = { Text("撤销导入批次？") },

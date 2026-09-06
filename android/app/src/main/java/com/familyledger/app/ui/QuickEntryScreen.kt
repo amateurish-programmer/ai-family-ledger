@@ -1,84 +1,84 @@
 package com.familyledger.app.ui
 
-import android.content.Intent
-import android.speech.RecognizerIntent
-import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.familyledger.app.domain.Money
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable fun QuickEntryScreen(model: LedgerViewModel, state: LedgerState, snackbar: SnackbarHostState) {
-    var text by rememberSaveable { mutableStateOf("") }
     var editing by rememberSaveable { mutableStateOf<String?>(null) }
-    var voiceError by remember { mutableStateOf<String?>(null) }
-    var cloudConfirm by remember { mutableStateOf(false) }
-    val voice = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == android.app.Activity.RESULT_OK) {
-            result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let { text = if (text.isBlank()) it else "$text；$it" }
-        }
-    }
-    BackHandler(enabled = !state.busy) { model.closeQuickEntry() }
+    val list = rememberLazyListState()
     val draft = state.quickDrafts.firstOrNull { it.id == editing }
     if (draft != null) {
         key(draft.id) { EntryEditor(draft, state.busy, snackbar, onClose = { editing = null }, onSave = { model.updateQuickDraft(it); editing = null }) }
         return
     }
-    Scaffold(topBar = { TopAppBar(title = { Text("一句话记账") }, navigationIcon = {
-        TextButton(onClick = model::closeQuickEntry, enabled = !state.busy) { Text("返回") }
-    }) }, snackbarHost = { SnackbarHost(snackbar) }, bottomBar = {
-        if (state.quickDrafts.isNotEmpty()) Surface {
-            Button(onClick = model::saveQuickDrafts, enabled = !state.busy,
-                modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp)) { Text("确认保存 ${state.quickDrafts.size} 笔") }
+    LaunchedEffect(state.chatMessages.size, state.quickDrafts.size, state.busy) {
+        val count = list.layoutInfo.totalItemsCount
+        if (count > 0) list.animateScrollToItem(count - 1)
+    }
+    Column(Modifier.fillMaxSize().imePadding()) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
+            Text("账本助手", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text("${state.localRole} · ${state.cloudStatus?.familyName ?: "本机账本"}", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-    }) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding).imePadding(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item {
-                Text("先说出来，再确认", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text("例如：昨天午饭 36.80 元，今天工资 5000 元。简单整理会默认成员为本人、账户为银行卡，请逐笔核对。")
-                OutlinedTextField(text, { if (it.length <= 2000) text = it }, modifier = Modifier.fillMaxWidth(), minLines = 3, maxLines = 7,
-                    label = { Text("记账内容") }, enabled = !state.busy)
-                OutlinedButton(onClick = {
-                    try {
-                        voice.launch(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
-                            putExtra(RecognizerIntent.EXTRA_PROMPT, "说出收支情况")
-                        })
-                    } catch (_: android.content.ActivityNotFoundException) { voiceError = "手机未安装语音识别服务，请使用键盘输入" }
-                }, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("语音输入") }
-                Text("语音由手机的识别服务处理，联网与否取决于该服务。", style = MaterialTheme.typography.bodySmall)
-                voiceError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { model.parseQuick(text, false) }, enabled = !state.busy && text.isNotBlank(), modifier = Modifier.weight(1f)) { Text("简单整理") }
-                    OutlinedButton(onClick = { cloudConfirm = true }, enabled = !state.busy && text.isNotBlank(), modifier = Modifier.weight(1f)) { Text("云端 AI 整理") }
-                }
-                if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = list, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            if (state.chatMessages.isEmpty()) item {
+                Text("今天想记什么？", style = MaterialTheme.typography.titleLarge)
+                Text("可以输入“午饭花了 36 元”，也可以问“这个月支出多少”。\n记账结果确认后才会保存。", Modifier.padding(top = 8.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (state.quickDrafts.isNotEmpty()) item { Text("待确认记录", style = MaterialTheme.typography.titleLarge) }
-            items(state.quickDrafts, key = { it.id }) { e ->
-                OutlinedCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("${e.type.label} ¥ ${com.familyledger.app.domain.Money.format(e.amountMinor)}", style = MaterialTheme.typography.titleLarge)
-                        Text("${e.occurredOn} · ${e.categoryL1}\n${e.account} · ${e.member}")
-                        Text(e.note, style = MaterialTheme.typography.bodySmall)
-                        Row { TextButton(onClick = { editing = e.id }, enabled = !state.busy) { Text("修改") }
-                            TextButton(onClick = { model.removeQuickDraft(e.id) }, enabled = !state.busy) { Text("移除") } }
+            items(state.chatMessages, key = { it.id }) { message ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = if (message.user) Arrangement.End else Arrangement.Start) {
+                    Surface(color = if (message.user) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
+                        shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth(if (message.user) .88f else 1f)) {
+                        SelectionContainer { Text(message.text, Modifier.padding(16.dp), style = MaterialTheme.typography.bodyLarge) }
                     }
                 }
             }
+            if (state.busy) item { Text("正在处理…", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            if (state.quickDrafts.isNotEmpty()) item { Text("待确认记录", style = MaterialTheme.typography.titleMedium) }
+            items(state.quickDrafts, key = { it.id }) { e ->
+                OutlinedCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("${e.type.label} ¥ ${Money.format(e.amountMinor)}", style = MaterialTheme.typography.titleLarge)
+                        Text("${e.occurredOn} · ${e.categoryL1}")
+                        Text("${e.member} · ${e.account} · 记账人 ${e.recordedBy}", style = MaterialTheme.typography.bodySmall)
+                        if (e.note.isNotBlank()) Text(e.note, style = MaterialTheme.typography.bodySmall)
+                        Row {
+                            TextButton(onClick = { editing = e.id }, enabled = !state.busy) { Text("修改") }
+                            TextButton(onClick = { model.removeQuickDraft(e.id) }, enabled = !state.busy) { Text("移除") }
+                        }
+                    }
+                }
+            }
+            if (state.quickDrafts.isNotEmpty()) item {
+                Button(onClick = model::saveQuickDrafts, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("确认保存 ${state.quickDrafts.size} 笔") }
+            }
+        }
+        Surface(shadowElevation = 2.dp) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+                if (state.cloudStatus?.email == null || state.cloudStatus.familyId == null) {
+                    TextButton(onClick = model::openCloud, enabled = !state.busy) { Text("登录并加入家庭，开始对话") }
+                }
+                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(state.chatInput, model::updateChatInput, modifier = Modifier.weight(1f), minLines = 1, maxLines = 5,
+                        placeholder = { Text("记收支，或问问账本…") }, enabled = !state.busy && state.quickDrafts.isEmpty())
+                    Button(onClick = model::sendChat, enabled = !state.busy && !state.loading && state.chatInput.isNotBlank() && state.quickDrafts.isEmpty()) { Text("发送") }
+                }
+                Text(if (state.quickDrafts.isNotEmpty()) "先确认或移除上方记录，再继续对话。" else "发送内容由 DeepSeek 处理；账本问答基于本机记录。",
+                    Modifier.padding(top = 6.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
-    if (cloudConfirm) AlertDialog(onDismissRequest = { cloudConfirm = false }, title = { Text("发送到云端 AI？") },
-        text = { Text("将发送当前输入内容给 DeepSeek 进行整理。返回结果只作为待确认记录，确认后才入账。请先登录并加入家庭。") },
-        confirmButton = { TextButton(onClick = { cloudConfirm = false; model.parseQuick(text, true) }) { Text("发送并整理") } },
-        dismissButton = { TextButton(onClick = { cloudConfirm = false }) { Text("取消") } })
 }

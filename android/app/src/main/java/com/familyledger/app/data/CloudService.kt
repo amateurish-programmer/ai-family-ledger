@@ -53,6 +53,15 @@ class CloudService(context: Context) {
     }
 
     fun autoSyncEnabled(): Boolean = config.getBoolean("autoSync", false)
+    private fun roleKey(): String {
+        val state = readState()
+        val owner = state.optString("boundUser").ifBlank { state.optString("user").ifBlank { "local" } }
+        return "localRole:$owner"
+    }
+    fun localRole(): String = synchronized(stateGuard) { config.getString(roleKey(), "本人") ?: "本人" }
+    fun setLocalRole(value: String) = synchronized(stateGuard) {
+        check(config.edit().putString(roleKey(), ChatCodec.role(value)).commit()) { "角色保存失败" }
+    }
     fun setAutoSyncEnabled(enabled: Boolean) {
         check(config.edit().putBoolean("autoSync", enabled).commit()) { "无法保存自动同步选项" }
     }
@@ -206,7 +215,7 @@ class CloudService(context: Context) {
     }
 
     suspend fun ai(operation: String, input: JSONObject): String = this.operation { version ->
-        require(operation in setOf("parse", "report")) { "不支持的 AI 操作" }
+        require(operation in setOf("parse", "report", "chat")) { "不支持的 AI 操作" }
         recoverFamily(version, required = true)
         val body = JSONObject().put("operation", operation).put("input", input)
         require(body.toString().toByteArray(Charsets.UTF_8).size <= 32768) { "AI 输入过长" }

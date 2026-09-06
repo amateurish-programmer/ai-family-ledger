@@ -50,17 +50,13 @@ import java.time.YearMonth
         CloudScreen(model, state, snackbar)
         return
     }
-    if (state.quickOpen) {
-        QuickEntryScreen(model, state, snackbar)
-        return
-    }
     if (state.importPreview != null) {
         ImportScreen(model, state, snackbar)
         return
     }
     if (editor != null) {
         val existing = state.entries.firstOrNull { it.id == editor }
-        if (editor != "new" && existing == null) {
+        if (existing == null) {
             Surface(Modifier.fillMaxSize()) {
                 Column(Modifier.safeDrawingPadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     if (state.loading) CircularProgressIndicator()
@@ -82,34 +78,32 @@ import java.time.YearMonth
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             NavigationBar {
-                listOf("账本", "报表", "设置").forEachIndexed { index, title ->
+                listOf("对话", "账本", "报表", "设置").forEachIndexed { index, title ->
                     NavigationBarItem(selected = tab == index, onClick = { tab = index },
                         icon = { Icon(when (index) {
-                            0 -> Icons.AutoMirrored.Outlined.ReceiptLong
-                            1 -> Icons.Outlined.BarChart
+                            0 -> Icons.Outlined.ChatBubbleOutline
+                            1 -> Icons.AutoMirrored.Outlined.ReceiptLong
+                            2 -> Icons.Outlined.BarChart
                             else -> Icons.Outlined.Settings
                         }, contentDescription = null) }, label = { Text(title) })
                 }
             }
-        },
-        floatingActionButton = {
-            if (tab == 0 && !state.loading) ExtendedFloatingActionButton(
-                onClick = { editorKey = "new" }, icon = { Icon(Icons.Outlined.Add, "记一笔") }, text = { Text("记一笔") })
         }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             when (tab) {
-                0 -> LedgerScreen(state, month, { monthText = it.toString() }, { editorKey = it.id }, model::delete, model::openQuickEntry)
-                1 -> ReportsScreen(state.entries, month, { monthText = it.toString() }, model, state)
-                2 -> SettingsScreen(model, state)
+                0 -> QuickEntryScreen(model, state, snackbar)
+                1 -> LedgerScreen(state, month, { monthText = it.toString() }, { editorKey = it.id }, model::delete)
+                2 -> ReportsScreen(state.entries, month, { monthText = it.toString() }, model, state)
+                3 -> SettingsScreen(model, state)
             }
         }
     }
 }
 
 @Composable private fun LedgerScreen(state: LedgerState, month: YearMonth, onMonth: (YearMonth) -> Unit,
-    onEdit: (LedgerEntry) -> Unit, onDelete: (String) -> Unit, onQuick: () -> Unit) {
+    onEdit: (LedgerEntry) -> Unit, onDelete: (String) -> Unit) {
     val start = month.atDay(1)
     val end = month.plusMonths(1).atDay(1)
     val summary = remember(state.entries, month) { summarize(state.entries, start, end) }
@@ -121,7 +115,6 @@ import java.time.YearMonth
         item {
             Text("家庭账本", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
             Text(state.cloudStatus?.familyName?.let { "$it · 本机副本" } ?: "本机账本", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedButton(onClick = onQuick, enabled = !state.loading && !state.busy, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) { Text("一句话 / 语音记账") }
             Spacer(Modifier.height(24.dp))
             PeriodSelector("${month.year} 年 ${month.monthValue} 月", { onMonth(month.minusMonths(1)) }, { onMonth(month.plusMonths(1)) })
             Spacer(Modifier.height(16.dp))
@@ -135,7 +128,7 @@ import java.time.YearMonth
             if (state.loading) CircularProgressIndicator(Modifier.padding(24.dp))
             else if (entries.isEmpty()) {
                 Text("这个月还没有记录", Modifier.padding(top = 28.dp), style = MaterialTheme.typography.titleMedium)
-                Text("点击「记一笔」，开始记录日常收支。", Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("在「对话」中输入文字，记录日常收支。", Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         items(entries, key = { it.id }) { entry ->

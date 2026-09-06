@@ -13,7 +13,8 @@ data class LedgerState(val entries: List<LedgerEntry> = emptyList(), val loading
     val busy: Boolean = false, val message: String? = null, val restorePreview: List<LedgerEntry>? = null,
     val savedEntryId: String? = null, val importPreview: ImportPreview? = null,
     val selectedImportKeys: Set<String> = emptySet(), val batches: List<ImportBatch> = emptyList(),
-    val quickOpen: Boolean = false, val quickDrafts: List<LedgerEntry> = emptyList(),
+    val quickDrafts: List<LedgerEntry> = emptyList(),
+    val chatMessages: List<ChatMessage> = emptyList(), val chatInput: String = "", val localRole: String = "本人",
     val cloudStatus: CloudStatus? = null, val cloudConflicts: List<CloudConflict> = emptyList(), val inviteCode: String? = null,
     val reportText: String? = null, val reportKey: String? = null, val cloudOpen: Boolean = false,
     val autoSync: Boolean = false)
@@ -34,21 +35,50 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
     fun clearMessage() { mutableState.update { it.copy(message = null) } }
     fun cancelRestore() { if (!state.value.busy) mutableState.update { it.copy(restorePreview = null) } }
     fun consumeSavedEntry() { mutableState.update { it.copy(savedEntryId = null) } }
-    fun openQuickEntry() { mutableState.update { it.copy(quickOpen = true) } }
-    fun closeQuickEntry() { if (!state.value.busy) mutableState.update { it.copy(quickOpen = false) } }
+    fun updateChatInput(value: String) { if (value.length <= 2000) mutableState.update { it.copy(chatInput = value) } }
+    fun setLocalRole(value: String) = perform { requireCloud().setLocalRole(value); refreshCloud() }
+    private fun chatMessage(user: Boolean, text: String, context: String = text) {
+        mutableState.update { it.copy(chatMessages = (it.chatMessages + ChatMessage(java.util.UUID.randomUUID().toString(), user, text, context)).takeLast(80)) }
+    }
     fun updateQuickDraft(entry: LedgerEntry) { mutableState.update { it.copy(quickDrafts = it.quickDrafts.map { old -> if (old.id == entry.id) entry else old }) } }
     fun removeQuickDraft(id: String) { mutableState.update { it.copy(quickDrafts = it.quickDrafts.filterNot { e -> e.id == id }) } }
-    fun parseQuick(text: String, useCloud: Boolean) = perform {
+    fun sendChat() = perform {
+        val snapshot = state.value
+        val text = snapshot.chatInput.trim()
         require(text.isNotBlank() && text.length <= 2000) { "内容须为 1 至 2000 字" }
-        val rows = if (useCloud) QuickEntryCodec.cloud(requireCloud().ai("parse", org.json.JSONObject().put("text", text).put("today", java.time.LocalDate.now().toString())))
-            else QuickEntryCodec.local(text)
-        mutableState.update { it.copy(quickDrafts = rows, message = "已整理 ${rows.size} 笔，请核对后保存") }
+        require(snapshot.quickDrafts.isEmpty()) { "请先确认或移除待保存记录" }
+        require(snapshot.cloudStatus?.email != null && snapshot.cloudStatus.familyId != null) { "请先在设置中登录并创建或加入家庭" }
+        val history = org.json.JSONArray().apply {
+            snapshot.chatMessages.takeLast(4).forEach { put(org.json.JSONObject().put("role", if (it.user) "user" else "assistant").put("text", it.context.take(1000))) }
+        }
+        val input = org.json.JSONObject().put("text", text).put("today", java.time.LocalDate.now().toString())
+            .put("role", snapshot.localRole).put("history", history)
+            .put("members", org.json.JSONArray(snapshot.entries.map { it.member }.distinct().take(40)))
+            .put("categories", org.json.JSONArray(snapshot.entries.flatMap { listOf(it.categoryL1, it.categoryL2) }.filter { it.isNotBlank() }.distinct().take(40)))
+        chatMessage(true, text)
+        mutableState.update { it.copy(chatInput = "") }
+        try {
+            val result = ChatCodec.decode(requireCloud().ai("chat", input), snapshot.localRole)
+            val answer = result.query?.let { query ->
+                val rows = repository.allEntries()
+                withContext(Dispatchers.Default) { ChatCodec.answer(query, rows) }
+            }
+            // Do not feed locally calculated financial results back to the model.
+            val context = if (result.query != null) "查询条件：${org.json.JSONObject().put("start", result.query.start).put("end", result.query.end).put("member", result.query.member).put("category", result.query.category).put("keyword", result.query.keyword)}" else result.reply
+            chatMessage(false, if (answer != null) result.reply + "\n\n" + answer else result.reply, context)
+            mutableState.update { it.copy(quickDrafts = result.entries) }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            chatMessage(false, "发送失败：${e.message ?: "服务暂不可用"}\n内容已放回输入框，可以重试。", "上次请求失败，没有保存记录。")
+            mutableState.update { it.copy(chatInput = text) }
+        }
     }
     fun saveQuickDrafts() = perform {
         val rows = state.value.quickDrafts
         require(rows.isNotEmpty())
         repository.saveMany(rows)
-        mutableState.update { it.copy(quickDrafts = emptyList(), quickOpen = false, message = "已保存 ${rows.size} 笔") }
+        mutableState.update { it.copy(quickDrafts = emptyList()) }
+        chatMessage(false, "已保存 ${rows.size} 笔记录。可以继续记账或提问。")
     }
     private fun requireCloud() = cloud ?: error("云端组件未初始化")
     fun openCloud() { mutableState.update { it.copy(cloudOpen = true) }; refreshCloud() }
@@ -58,12 +88,13 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         else { requireCloud().login(email.trim(), password); mutableState.update { it.copy(message = "已登录") } }
         refreshCloud()
     }
-    fun logout() = perform { requireCloud().logout(); refreshCloud(); mutableState.update { it.copy(cloudConflicts = emptyList(), inviteCode = null, message = "已退出登录，本机数据保留") } }
+    fun logout() = perform { requireCloud().logout(); refreshCloud(); mutableState.update { it.copy(cloudConflicts = emptyList(), inviteCode = null,
+        chatMessages = emptyList(), chatInput = "", quickDrafts = emptyList(), message = "已退出登录，本机数据保留") } }
     fun createFamily(name: String) = perform { requireCloud().createFamily(name.trim()); refreshCloud() }
     fun joinFamily(code: String) = perform { requireCloud().joinFamily(code.trim()); refreshCloud() }
     fun createInvite() = perform { val code = requireCloud().createInvite(); mutableState.update { it.copy(inviteCode = code) } }
     private fun refreshCloud() {
-        try { val status = cloud?.status(); mutableState.update { it.copy(cloudStatus = status) } }
+        try { val status = cloud?.status(); val role = cloud?.localRole() ?: "本人"; mutableState.update { it.copy(cloudStatus = status, localRole = role) } }
         catch (e: Exception) { mutableState.update { it.copy(cloudStatus = null, message = e.message ?: "云端状态读取失败，本机账本可继续使用") } }
     }
     fun setAutoSync(enabled: Boolean) = perform { requireCloud().setAutoSyncEnabled(enabled); mutableState.update { it.copy(autoSync = enabled) } }

@@ -1,22 +1,23 @@
 # AI 家庭账本
 
-面向 Android 的家庭记账 App，采用 Kotlin + Jetpack Compose + Room。V0.6 内置家庭云服务，用户无需填写地址或 key；注册登录后创建或加入家庭即可使用同步与 AI。
+面向 Android 的家庭记账 App，采用 Kotlin + Jetpack Compose + Room。V0.7 统一文字对话记账与账本问答，支持本机角色；内置家庭云服务，注册登录后创建或加入家庭即可使用。
 
 [GitHub 仓库](https://github.com/amateurish-programmer/ai-family-ledger) · [APK 构建与下载](https://github.com/amateurish-programmer/ai-family-ledger/actions/workflows/android-ci.yml)
 
-## V0.6.0 功能
+## V0.7.0 功能
 
 - 收入/支出新增、编辑、删除，关机重启后仍由 Room 保存。
 - 日期、两级分类、账户、归属成员、记账人、商家、项目、备注。
 - 月度流水、月度/年度收支结余与支出分类汇总。
 - JSON 备份、恢复预览、重复 ID 跳过与软删除标记保留。
 - 随手记 XLSX 导入预览、逐行选择、疑似重复提示、来源追溯和批次撤销；三个工作表导出。
-- 一句话简单整理、手机语音转文字、云端 AI 提案；修改并确认后才入账。
+- 唯一文字对话入口，记账与提问自动识别；移除语音和独立“记一笔”。提案修改并确认后才入账。
+- 日期、成员、分类、关键词账本问答；实际金额由 App 计算。设置中编辑本机角色，默认用于之后的新提案。
 - 报告增加成员支出、月度趋势、上期比较、文本导出与可选 AI 解读。
 - 内置云端邮箱登录、家庭邀请、显式同步、冲突处理与打开 App 时同步；错误提示区分注册、发信和限流原因。
 - GitHub Actions 测试、lint、Debug APK 构建与下载产物。
 
-金额仅支持 CNY，以整数分保存。余额变更保留原值、不参与收支。数据库从 V0.1 非破坏性升级，JSON V2 可读取旧版备份。**Supabase 数据库与 AI 函数已部署，DeepSeek 密钥和 QQ 邮箱 SMTP 已配置；手机、邮件投递和模型请求尚未联调验收**；连接信息见 [云端服务说明](docs/BACKEND_SETUP.md)。语音识别依赖手机安装的识别服务。构建与验收状态见 [验证记录](docs/VALIDATION.md)。
+金额仅支持 CNY，以整数分保存。余额变更保留原值、不参与收支。数据库从 V0.1 非破坏性升级，JSON V2 可读取旧版备份。Supabase 与 DeepSeek 已部署，注册邮件投递和邮箱确认已有用户反馈及控制台记录；V0.7 对话接口已更新，手机上的实际模型效果待使用确认。详见 [V0.7 说明](docs/V0.7.md)和[云端服务说明](docs/BACKEND_SETUP.md)。
 
 ## 不安装 Android Studio，获取 APK
 
