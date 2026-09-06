@@ -339,10 +339,11 @@ class CloudService(context: Context) {
         val base = officialUrl(pair.first)
         require(path.startsWith("/") && !path.startsWith("//"))
         val connection = URI(base + path).toURL().openConnection() as HttpURLConnection
+        val deadline = System.nanoTime() + 90_000_000_000L
         try {
             connection.instanceFollowRedirects = false
             connection.connectTimeout = 15000
-            connection.readTimeout = if (path.startsWith("/functions/")) 45000 else 20000
+            connection.readTimeout = if (path.startsWith("/functions/")) 60000 else 20000
             connection.requestMethod = method
             connection.setRequestProperty("apikey", pair.second)
             connection.setRequestProperty("Accept", "application/json")
@@ -362,6 +363,7 @@ class CloudService(context: Context) {
                 val output = java.io.ByteArrayOutputStream()
                 val buffer = ByteArray(8192)
                 while (true) {
+                    require(System.nanoTime() < deadline) { "云端响应超时，请稍后重试" }
                     val count = input.read(buffer)
                     if (count < 0) break
                     require(output.size() + count <= MAX_RESPONSE) { "云端响应超过大小上限" }
@@ -372,7 +374,16 @@ class CloudService(context: Context) {
             synchronized(stateGuard) { checkEpoch(version) }
             if (code !in 200..299) {
                 // Do not expose raw server errors, which may echo account/ledger content.
-                val hint = when (code) { 401 -> "登录已失效，请重新登录"; 403 -> "账号无家庭权限或操作仅限家庭创建者"; 429 -> "请求过于频繁或 AI 今日额度已用完"; else -> "云端请求失败（HTTP $code），请检查配置、邮箱验证和服务端部署" }
+                val error = runCatching { JSONObject(String(bytes, Charsets.UTF_8)) }.getOrNull()
+                val knownError = error?.let { item -> item.optString("error_code").ifBlank { item.optString("message") } }
+                val hint = when (knownError) {
+                    "invalid_credentials" -> "邮箱或密码不正确"
+                    "email_not_confirmed" -> "请先完成邮箱验证"
+                    "invalid_invite", "invalid_or_expired_invite" -> "邀请码不存在、已使用或已过期"
+                    "invite_limit" -> "有效待用邀请码已达十个，请先使用或等待到期"
+                    "owner_required" -> "只有家庭创建者可以生成邀请码"
+                    else -> when (code) { 401 -> "登录已失效，请重新登录"; 403 -> "账号无家庭权限或操作仅限家庭创建者"; 429 -> "请求过于频繁或 AI 今日额度已用完"; else -> "云端请求失败（HTTP $code），请检查配置、邮箱验证和服务端部署" }
+                }
                 throw HttpFailure(code, hint)
             }
             return String(bytes, Charsets.UTF_8)

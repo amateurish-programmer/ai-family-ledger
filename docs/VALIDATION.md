@@ -1,5 +1,22 @@
 # 验证记录
 
+## V0.5.0 连续开发记录
+
+用户最新要求“完成后继续进行后续阶段，无需验证”。本轮仅安排 APK 编译，不执行 JVM 测试、lint、模拟器、真机或云端功能验收。以下 V0.1 通过记录仅适用于旧版，不能作为 V0.5 新功能通过的证据。
+
+已编写 V0.2 导入测试及合成夹具；用户提出不验证之前曾运行一次核心编译，确认导入功能尚缺失。此后只做编译，不执行测试。
+
+- 新增源码：Excel 预览/查重/批次/导出，JSON V2 与 Room V1→V2，文字/语音提案，家庭客户端/云端部署文件，报告趋势/成员/导出/AI入口。
+- Android 版本：0.5.0 / versionCode 5，保持包名和开发签名，可覆盖 V0.1。
+- 编译成功：https://github.com/amateurish-programmer/ai-family-ledger/actions/runs/33999957197 （build_only=true，设备测试跳过）。
+- 构建提交：`95d3211da31f890cfba086dc9ce28e62f2793fcf`；APK：`AI-Family-Ledger-debug-10`。这代表编译完成，不代表新增功能验收通过。
+- APK Artifact ID：`9979210047`；已下载到 `dist/apk/app-debug-v0.5.0.apk`，大小 17,614,787 字节。
+- 构建生成的 Room V2 schema 已保存到 `android/app/schemas/com.familyledger.app.data.LedgerDatabase/2.json`。
+- 实际 Supabase 项目、邮箱账号流程、数据库权限、跨设备同步与模型请求尚未部署或验收。
+- 真实 XLSX 保留在本机，源码包和 Git 使用明确文件清单，不包含原始账本或凭据。
+
+## V0.1.0 历史验证
+
 日期：2026-09-06（北京时间）。
 
 | 验证 | 状态 | 证据或边界 |
