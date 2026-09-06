@@ -23,6 +23,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.familyledger.app.domain.EntryType
 import com.familyledger.app.domain.Money
+import com.familyledger.app.data.IdentityProfile
 
 @Composable fun QuickEntryScreen(model: LedgerViewModel, state: LedgerState, snackbar: SnackbarHostState) {
     var editing by rememberSaveable { mutableStateOf<String?>(null) }
@@ -39,7 +40,7 @@ import com.familyledger.app.domain.Money
     Column(Modifier.fillMaxSize().imePadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            IconBadge(Icons.Outlined.Cottage, sage = true)
+            ProfileBadge(IdentityProfile.familyIcons.first { it.id == (state.cloudStatus?.familyIcon ?: "home") })
             Column(Modifier.weight(1f)) {
                 Text("家庭账本", style = MaterialTheme.typography.titleLarge)
                 Text("${state.localRole} · ${state.cloudStatus?.familyName ?: "本机账本"}", style = MaterialTheme.typography.bodySmall,
@@ -68,7 +69,7 @@ import com.familyledger.app.domain.Money
             items(state.chatMessages, key = { it.id }) { message ->
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = if (message.user) Alignment.End else Alignment.Start,
                     verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(if (message.user) state.localRole else "账本助手", style = MaterialTheme.typography.labelSmall,
+                    Text(if (message.user) "${IdentityProfile.avatars.first { it.id == state.localAvatar }.symbol} ${state.localRole}" else "账本助手", style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Surface(color = if (message.user) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLowest,
                         shape = if (message.user) RoundedCornerShape(20.dp, 5.dp, 20.dp, 20.dp) else RoundedCornerShape(5.dp, 20.dp, 20.dp, 20.dp),
@@ -129,7 +130,7 @@ import com.familyledger.app.domain.Money
                         shape = RoundedCornerShape(24.dp), colors = OutlinedTextFieldDefaults.colors(
                             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
                             unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant),
-                        enabled = !state.busy && state.quickDrafts.isEmpty())
+                        enabled = !state.busy && !state.loading && state.quickDrafts.isEmpty())
                     FilledIconButton(onClick = model::sendChat,
                         modifier = Modifier.size(56.dp),
                         enabled = !state.busy && !state.loading && state.chatInput.isNotBlank() && state.quickDrafts.isEmpty()) {

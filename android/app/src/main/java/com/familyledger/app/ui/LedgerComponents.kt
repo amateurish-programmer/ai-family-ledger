@@ -18,6 +18,16 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.familyledger.app.data.ProfileChoice
+
+@Composable internal fun ProfileBadge(choice: ProfileChoice, modifier: Modifier = Modifier) {
+    Box(modifier.size(46.dp).background(MaterialTheme.colorScheme.secondaryContainer, CircleShape)
+        .semantics { contentDescription = choice.label }, contentAlignment = Alignment.Center) {
+        Text(choice.symbol, style = MaterialTheme.typography.headlineSmall)
+    }
+}
 
 @Composable internal fun PageHeading(title: String, subtitle: String, trailing: (@Composable () -> Unit)? = null) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {

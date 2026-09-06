@@ -74,4 +74,48 @@ const truncated = await handler(new Request('https://project.example.test/functi
 assert.equal(truncated.status, 200);
 assert.ok((await truncated.json()).result.includes('基础统计摘要'));
 count++;
+const daily = { ...input, period: '2024-02-29', trend: [
+  { period: '2024-02-29', income: '10000.00', expense: '12000.00' },
+] };
+const weekly = { ...input, period: '2025-12-29 至 2026-01-04', trend: [
+  '2025-12-29', '2025-12-30', '2025-12-31', '2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04',
+].map(period => ({ period, income: '10000.00', expense: '12000.00' })) };
+for (const [fixture, text, expected] of [
+  [daily, '2024-02-29支出为12000元。', true],
+  [daily, '2024年2月29日结余为-2000元。', true],
+  [daily, '2月29日需核对开支。', true],
+  [daily, '29日支出集中。', true],
+  [daily, '2024-02-28支出为12000元。', false],
+  [daily, '2024年2月30日支出集中。', false],
+  [daily, '本期支出为29元。', false],
+  [weekly, '2025-12-29至2026-01-04的支出为12000元。', true],
+  [weekly, '2025年12月31日与2026年1月1日均有记录。', true],
+  [weekly, '12月30日支出集中。', true],
+  [weekly, '2025-01-01支出集中。', false],
+  [weekly, '2026-01-05支出集中。', false],
+  [weekly, '本周支出占80%。', false],
+  [weekly, '本周节省3000元。', false],
+]) {
+  sandbox.reportInput(fixture);
+  assert.equal(sandbox.reportNumbersSupported(text, fixture), expected, text); count++;
+}
+finishReason = 'stop';
+for (const fixture of [
+  { ...daily, period: '2023-02-29' },
+  { ...daily, period: '2026 年 13 月' },
+  { ...weekly, period: '2025-12-30 至 2026-01-05' },
+  { ...weekly, period: '2025-12-29 至 2026-01-05' },
+  { ...daily, trend: [{ period: '2024-02-30', income: '1.00', expense: '0.00' }] },
+]) {
+  assert.throws(() => sandbox.reportInput(fixture)); count++;
+}
+for (const fixture of [daily, weekly]) {
+  output = JSON.stringify({ report: `${fixture.period}支出为12000元。` });
+  const response = await handler(new Request('https://project.example.test/functions/v1/ledger-ai', {
+    method: 'POST', headers: { Authorization: 'Bearer fixture-token-123456789012345', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ operation: 'report', input: fixture }),
+  }));
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).result.includes('基础统计摘要'), false); count++;
+}
 console.log(`Report regression checks: ${count} passed. No live requests.`);

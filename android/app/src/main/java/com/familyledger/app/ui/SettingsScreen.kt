@@ -18,12 +18,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import java.time.LocalDate
 import com.familyledger.app.data.XlsxCodec
+import com.familyledger.app.data.IdentityProfile
 import com.familyledger.app.domain.ImportBatch
 
 @Composable fun SettingsScreen(model: LedgerViewModel, state: LedgerState) {
     val resolver = LocalContext.current.contentResolver
     var rollback by remember { mutableStateOf<ImportBatch?>(null) }
     var role by remember(state.localRole) { mutableStateOf(state.localRole) }
+    var avatar by remember(state.localAvatar) { mutableStateOf(state.localAvatar) }
     val importExcel = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let { model.previewImport(resolver, it) } }
     val exportExcel = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(XlsxCodec.MIME)) { uri -> uri?.let { model.exportSpreadsheet(resolver, it) } }
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
@@ -38,7 +40,7 @@ import com.familyledger.app.domain.ImportBatch
         Spacer(Modifier.height(4.dp))
         Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.large) {
             Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                Icon(Icons.Outlined.Cottage, null, Modifier.size(32.dp), tint = LedgerSage)
+                ProfileBadge(IdentityProfile.familyIcons.first { it.id == (state.cloudStatus?.familyIcon ?: "home") })
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(state.cloudStatus?.familyName ?: "我的家庭账本", style = MaterialTheme.typography.titleMedium)
                     Text("本机已保存 ${state.entries.size} 笔记录", style = MaterialTheme.typography.bodySmall)
@@ -50,7 +52,17 @@ import com.familyledger.app.domain.ImportBatch
             placeholder = { Text("例如：老公、老婆") }, singleLine = true,
             supportingText = { Text("${role.length}/20 · 新账目默认归属此角色") },
             enabled = !state.busy, modifier = Modifier.fillMaxWidth())
-        Button(onClick = { model.setLocalRole(role) }, enabled = !state.busy && role.isNotBlank() && role.trim() != state.localRole,
+        Text("角色头像", style = MaterialTheme.typography.titleSmall)
+        IdentityProfile.avatars.chunked(3).forEach { choices ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                choices.forEach { choice ->
+                    FilterChip(selected = avatar == choice.id, onClick = { avatar = choice.id },
+                        enabled = !state.busy, label = { Text("${choice.symbol} ${choice.label}") },
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp))
+                }
+            }
+        }
+        Button(onClick = { model.setLocalIdentity(role, avatar) }, enabled = !state.busy && role.isNotBlank() && (role.trim() != state.localRole || avatar != state.localAvatar),
             modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp)) { Text("保存角色") }
         Text("更改角色不会修改已有记录，也不会改变家庭权限。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         SettingsAction(Icons.Outlined.PeopleOutline, "家庭账号与同步", state.cloudStatus?.familyName ?: "登录账号，与家人共享账本", !state.busy, model::openCloud)
@@ -83,7 +95,7 @@ import com.familyledger.app.domain.ImportBatch
         HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("家庭账本", style = MaterialTheme.typography.titleSmall)
-            Text("V0.8.0", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("V0.9.0", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Text("文字对话记账 · 家庭财务分析 · 家庭同步", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("登录并加入家庭后可使用对话与同步；已保存账目可离线查看和编辑。", style = MaterialTheme.typography.bodySmall,

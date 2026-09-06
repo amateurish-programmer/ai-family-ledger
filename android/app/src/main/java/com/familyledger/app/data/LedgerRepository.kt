@@ -6,6 +6,23 @@ import kotlinx.coroutines.flow.map
 
 class LedgerRepository(private val database: LedgerDatabase) {
     private val dao = database.ledgerDao()
+    private val conversations = database.conversationDao()
+    suspend fun chatMessages(owner: String) = conversations.messages(owner).map { it.toMessage() }
+    suspend fun chatDrafts(owner: String) = conversations.drafts(owner)?.let(BackupCodec::decode) ?: emptyList()
+    suspend fun saveChatDrafts(owner: String, rows: List<LedgerEntry>) {
+        require(owner.isNotBlank())
+        conversations.saveDrafts(ChatDraftEntity(owner, BackupCodec.encode(rows.map(::validateEntry))))
+    }
+    suspend fun appendChat(owner: String, message: ChatMessage, drafts: List<LedgerEntry>) = database.withTransaction {
+        require(owner.isNotBlank() && message.id.isNotBlank() && message.text.isNotBlank())
+        conversations.append(ChatEntity(owner = owner, messageId = message.id, user = message.user, text = message.text, context = message.context))
+        saveChatDrafts(owner, drafts)
+    }
+    suspend fun confirmChatDrafts(owner: String, rows: List<LedgerEntry>) = database.withTransaction {
+        require(chatDrafts(owner) == rows) { "待确认记录已变化，请重新查看" }
+        saveMany(rows)
+        saveChatDrafts(owner, emptyList())
+    }
     val entries = dao.observeActive().map { rows -> rows.map { it.toEntry() } }
     suspend fun save(entry: LedgerEntry) = dao.save(EntryEntity.from(validateEntry(entry).copy(updatedAt = System.currentTimeMillis())))
     suspend fun saveMany(rows: List<LedgerEntry>) = database.withTransaction {

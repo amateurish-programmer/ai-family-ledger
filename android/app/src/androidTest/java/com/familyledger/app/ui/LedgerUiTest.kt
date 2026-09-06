@@ -18,6 +18,7 @@ class LedgerUiTest {
         compose.onNodeWithText("记收支，聊聊家庭财务…").performTextInput("午饭 36.80 元")
         compose.onNodeWithText("设置").performClick()
         compose.onNodeWithText("角色名称").performScrollTo().performTextReplacement("老公")
+        compose.onNodeWithText("🐱 小猫").performScrollTo().performClick()
         compose.onNodeWithText("保存角色").performScrollTo().performClick()
         compose.onNodeWithText("对话").performClick()
         awaitText("老公 · 本机账本")
@@ -29,9 +30,19 @@ class LedgerUiTest {
         compose.onNodeWithText("报表", useUnmergedTree = true).performClick()
         compose.waitForIdle()
         screenshot("ledger-report.png")
+        compose.onNodeWithText("日报").performClick()
+        compose.onNodeWithText("日报").assertIsSelected()
+        screenshot("ledger-daily.png")
+        compose.onNodeWithText("周报").performClick()
+        compose.onNodeWithText("周报").assertIsSelected()
+        screenshot("ledger-weekly.png")
         compose.onNodeWithText("设置", useUnmergedTree = true).performClick()
         compose.waitForIdle()
         screenshot("ledger-settings.png")
+        compose.onNodeWithText("家庭账号与同步").performScrollTo().performClick()
+        compose.onNodeWithText("忘记密码？").performScrollTo().performClick()
+        compose.onNodeWithText("找回密码").assertExists()
+        screenshot("ledger-recovery.png")
     }
 
     private fun awaitText(text: String) {

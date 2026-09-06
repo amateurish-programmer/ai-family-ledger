@@ -21,6 +21,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.familyledger.app.domain.*
+import com.familyledger.app.data.IdentityProfile
 import java.time.YearMonth
 
 @Composable fun LedgerApp(model: LedgerViewModel) {
@@ -120,7 +121,7 @@ import java.time.YearMonth
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 32.dp)) {
         item {
             PageHeading("家庭账本", state.cloudStatus?.familyName?.let { "$it · 本机副本" } ?: "本机账本") {
-                IconBadge(Icons.Outlined.MenuBook, sage = true)
+                ProfileBadge(IdentityProfile.familyIcons.first { it.id == (state.cloudStatus?.familyIcon ?: "home") })
             }
             Spacer(Modifier.height(24.dp))
             PeriodSelector("${month.year} 年 ${month.monthValue} 月", { onMonth(month.minusMonths(1)) }, { onMonth(month.plusMonths(1)) })

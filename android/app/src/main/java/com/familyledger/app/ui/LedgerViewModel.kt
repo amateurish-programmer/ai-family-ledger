@@ -17,16 +17,31 @@ data class LedgerState(val entries: List<LedgerEntry> = emptyList(), val loading
     val chatMessages: List<ChatMessage> = emptyList(), val chatInput: String = "", val localRole: String = "本人",
     val cloudStatus: CloudStatus? = null, val cloudConflicts: List<CloudConflict> = emptyList(), val inviteCode: String? = null,
     val reportText: String? = null, val reportKey: String? = null, val cloudOpen: Boolean = false,
-    val autoSync: Boolean = false, val operationStatus: String? = null)
+    val autoSync: Boolean = false, val operationStatus: String? = null, val localAvatar: String = "person")
 
 class LedgerViewModel(private val repository: LedgerRepository, private val cloud: CloudService? = null) : ViewModel() {
     private val mutableState = MutableStateFlow(LedgerState())
     val state = mutableState.asStateFlow()
+    private var chatOwner: String? = null
+
+    private suspend fun restoreConversation() {
+        val owner = cloud?.conversationOwner() ?: "local"
+        if (owner == chatOwner) return
+        // Do not display one account's messages while another account's history is loading.
+        mutableState.update { it.copy(chatMessages = emptyList(), quickDrafts = emptyList(), chatInput = "") }
+        val messages = repository.chatMessages(owner)
+        val drafts = repository.chatDrafts(owner)
+        chatOwner = owner
+        mutableState.update { it.copy(chatMessages = messages, quickDrafts = drafts,
+            chatInput = messages.lastOrNull()?.takeIf { m -> m.user }?.text?.take(2000) ?: "") }
+    }
 
     init {
         refreshCloud()
         mutableState.update { it.copy(autoSync = cloud?.autoSyncEnabled() ?: false) }
         viewModelScope.launch {
+            try { restoreConversation() }
+            catch (e: Exception) { mutableState.update { it.copy(message = "对话读取失败，请重新打开应用；已有数据未删除") } }
             repository.entries.catch { mutableState.update { it.copy(loading = false, message = "账本读取失败，请关闭后重试") } }
                 .collect { rows -> mutableState.update { it.copy(entries = rows, loading = false) } }
         }
@@ -37,11 +52,23 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
     fun consumeSavedEntry() { mutableState.update { it.copy(savedEntryId = null) } }
     fun updateChatInput(value: String) { if (value.length <= 2000) mutableState.update { it.copy(chatInput = value) } }
     fun setLocalRole(value: String) = perform { requireCloud().setLocalRole(value); refreshCloud() }
-    private fun chatMessage(user: Boolean, text: String, context: String = text) {
-        mutableState.update { it.copy(chatMessages = (it.chatMessages + ChatMessage(java.util.UUID.randomUUID().toString(), user, text, context)).takeLast(80)) }
+    fun setLocalIdentity(role: String, avatar: String) = perform { requireCloud().setLocalIdentity(role, avatar); refreshCloud() }
+    private suspend fun chatMessage(user: Boolean, text: String, context: String = text, drafts: List<LedgerEntry> = state.value.quickDrafts) {
+        val message = ChatMessage(java.util.UUID.randomUUID().toString(), user, text, context)
+        repository.appendChat(chatOwner ?: error("对话尚未加载，请重新打开应用"), message, drafts)
+        mutableState.update { it.copy(chatMessages = it.chatMessages + message, quickDrafts = drafts) }
     }
-    fun updateQuickDraft(entry: LedgerEntry) { mutableState.update { it.copy(quickDrafts = it.quickDrafts.map { old -> if (old.id == entry.id) entry else old }) } }
-    fun removeQuickDraft(id: String) { mutableState.update { it.copy(quickDrafts = it.quickDrafts.filterNot { e -> e.id == id }) } }
+    fun updateQuickDraft(entry: LedgerEntry) = perform {
+        val valid = validateEntry(entry)
+        val drafts = state.value.quickDrafts.map { if (it.id == valid.id) valid else it }
+        repository.saveChatDrafts(chatOwner ?: error("对话尚未加载"), drafts)
+        mutableState.update { it.copy(quickDrafts = drafts) }
+    }
+    fun removeQuickDraft(id: String) = perform {
+        val drafts = state.value.quickDrafts.filterNot { it.id == id }
+        repository.saveChatDrafts(chatOwner ?: error("对话尚未加载"), drafts)
+        mutableState.update { it.copy(quickDrafts = drafts) }
+    }
     fun sendChat() = perform {
         val snapshot = state.value
         val text = snapshot.chatInput.trim()
@@ -79,8 +106,7 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
             }
             // Preserve the actual answer for follow-up questions, not only the query filter.
             val reply = answer ?: result.reply
-            chatMessage(false, reply)
-            mutableState.update { it.copy(quickDrafts = result.entries) }
+            chatMessage(false, reply, drafts = result.entries)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             chatMessage(false, "发送失败：${e.message ?: "服务暂不可用"}\n内容已放回输入框，可以重试。", "上次请求失败，没有保存记录。")
@@ -90,7 +116,7 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
     fun saveQuickDrafts() = perform {
         val rows = state.value.quickDrafts
         require(rows.isNotEmpty())
-        repository.saveMany(rows)
+        repository.confirmChatDrafts(chatOwner ?: error("对话尚未加载"), rows)
         mutableState.update { it.copy(quickDrafts = emptyList()) }
         chatMessage(false, "已保存 ${rows.size} 笔记录。可以继续记账或提问。")
     }
@@ -101,14 +127,29 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         if (signup) { val message = requireCloud().signUp(email.trim(), password); mutableState.update { it.copy(message = message) } }
         else { requireCloud().login(email.trim(), password); mutableState.update { it.copy(message = "已登录") } }
         refreshCloud()
+        restoreConversation()
     }
-    fun logout() = perform { requireCloud().logout(); refreshCloud(); mutableState.update { it.copy(cloudConflicts = emptyList(), inviteCode = null,
-        chatMessages = emptyList(), chatInput = "", quickDrafts = emptyList(), message = "已退出登录，本机数据保留") } }
+    fun logout() = perform { requireCloud().logout(); refreshCloud(); restoreConversation()
+        mutableState.update { it.copy(cloudConflicts = emptyList(), inviteCode = null, message = "已退出登录，对话与本机账本保留") } }
+    fun requestPasswordReset(email: String, onSuccess: () -> Unit = {}) = perform {
+        val message = requireCloud().requestPasswordReset(email)
+        mutableState.update { it.copy(message = message) }; onSuccess()
+    }
+    fun resetPassword(email: String, code: String, password: String, onSuccess: () -> Unit = {}) = perform {
+        val message = requireCloud().resetPassword(email, code, password)
+        mutableState.update { it.copy(message = message) }; onSuccess()
+    }
+    fun updateFamilyProfile(name: String, icon: String) = perform {
+        requireCloud().updateFamilyProfile(name, icon); refreshCloud()
+        mutableState.update { it.copy(message = "家庭资料已更新，家人刷新或同步后可见") }
+    }
+    fun refreshFamily() = perform { requireCloud().refreshFamily(); refreshCloud() }
     fun createFamily(name: String) = perform { requireCloud().createFamily(name.trim()); refreshCloud() }
     fun joinFamily(code: String) = perform { requireCloud().joinFamily(code.trim()); refreshCloud() }
     fun createInvite() = perform { val code = requireCloud().createInvite(); mutableState.update { it.copy(inviteCode = code) } }
     private fun refreshCloud() {
-        try { val status = cloud?.status(); val role = cloud?.localRole() ?: "本人"; mutableState.update { it.copy(cloudStatus = status, localRole = role) } }
+        try { val status = cloud?.status(); val role = cloud?.localRole() ?: "本人"; val avatar = cloud?.localAvatar() ?: "person"
+            mutableState.update { it.copy(cloudStatus = status, localRole = role, localAvatar = avatar) } }
         catch (e: Exception) { mutableState.update { it.copy(cloudStatus = null, message = e.message ?: "云端状态读取失败，本机账本可继续使用") } }
     }
     fun setAutoSync(enabled: Boolean) = perform { requireCloud().setAutoSyncEnabled(enabled); mutableState.update { it.copy(autoSync = enabled) } }
@@ -221,6 +262,7 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
 
     private fun perform(block: suspend () -> Unit) {
         if (state.value.busy) return
+        if (state.value.loading) { mutableState.update { it.copy(message = "正在加载本机数据，请稍候") }; return }
         mutableState.update { it.copy(busy = true) }
         viewModelScope.launch {
             try { block() }

@@ -41,13 +41,39 @@ interface LedgerDao {
     suspend fun delete(id: String, now: Long)
 }
 
-@Database(entities = [EntryEntity::class], version = 2, exportSchema = true)
+@Entity(tableName = "chat_messages", indices = [Index(value = ["owner", "messageId"], unique = true)])
+data class ChatEntity(@PrimaryKey(autoGenerate = true) val sequence: Long = 0,
+    val owner: String, val messageId: String, val user: Boolean, val text: String, val context: String) {
+    fun toMessage() = ChatMessage(messageId, user, text, context)
+}
+
+@Entity(tableName = "chat_drafts")
+data class ChatDraftEntity(@PrimaryKey val owner: String, val payload: String)
+
+@Dao
+interface ConversationDao {
+    @Query("SELECT * FROM chat_messages WHERE owner = :owner ORDER BY sequence ASC")
+    suspend fun messages(owner: String): List<ChatEntity>
+    @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun append(message: ChatEntity)
+    @Query("SELECT payload FROM chat_drafts WHERE owner = :owner") suspend fun drafts(owner: String): String?
+    @Upsert suspend fun saveDrafts(drafts: ChatDraftEntity)
+}
+
+@Database(entities = [EntryEntity::class, ChatEntity::class, ChatDraftEntity::class], version = 3, exportSchema = true)
 abstract class LedgerDatabase : RoomDatabase() {
     abstract fun ledgerDao(): LedgerDao
+    abstract fun conversationDao(): ConversationDao
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE entries ADD COLUMN importDataJson TEXT NOT NULL DEFAULT ''")
+            }
+        }
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS chat_messages (sequence INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, owner TEXT NOT NULL, messageId TEXT NOT NULL, user INTEGER NOT NULL, text TEXT NOT NULL, context TEXT NOT NULL)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_chat_messages_owner_messageId ON chat_messages (owner, messageId)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS chat_drafts (owner TEXT NOT NULL PRIMARY KEY, payload TEXT NOT NULL)")
             }
         }
     }

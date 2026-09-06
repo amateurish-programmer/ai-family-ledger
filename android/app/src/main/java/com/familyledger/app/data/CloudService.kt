@@ -25,7 +25,8 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-data class CloudStatus(val configured: Boolean, val email: String?, val familyId: String?, val familyName: String?, val lastSync: Long)
+data class CloudStatus(val configured: Boolean, val email: String?, val familyId: String?, val familyName: String?, val lastSync: Long,
+    val familyIcon: String = "home", val isOwner: Boolean = false)
 data class CloudConflict(val id: String, val local: LedgerEntry, val remote: LedgerEntry, val remoteRevision: Long)
 data class SyncResult(val uploaded: Int, val downloaded: Int, val conflicts: List<CloudConflict>, val elapsedMillis: Long = 0, val requestCount: Int = 0)
 
@@ -52,21 +53,31 @@ class CloudService(context: Context) {
         val state = readState()
         CloudStatus(config.getString("url", null) != null && config.getString("anonKey", null) != null,
             if (state.has("access")) state.optString("email").ifBlank { null } else null,
-            state.optString("familyId").ifBlank { null }, state.optString("familyName").ifBlank { null }, state.optLong("lastSync"))
+            state.optString("familyId").ifBlank { null }, state.optString("familyName").ifBlank { null }, state.optLong("lastSync"),
+            IdentityProfile.familyIcon(state.optString("familyIcon").ifBlank { null }), state.has("access") && state.optBoolean("isOwner", false))
     }
 
     fun autoSyncEnabled(): Boolean = config.getBoolean("autoSync", false)
-    private fun roleKey(): String {
+    fun conversationOwner(): String = synchronized(stateGuard) {
         val state = readState()
-        val owner = state.optString("boundUser").ifBlank { state.optString("user").ifBlank { "local" } }
-        return "localRole:$owner"
+        state.optString("boundUser").ifBlank { state.optString("user").ifBlank { "local" } }
     }
+    private fun roleKey(): String = "localRole:${conversationOwner()}"
+    private fun avatarKey(): String = "localAvatar:${conversationOwner()}"
     fun localRole(): String = synchronized(stateGuard) { config.getString(roleKey(), "本人") ?: "本人" }
     fun setLocalRole(value: String) = synchronized(stateGuard) {
         check(config.edit().putString(roleKey(), ChatCodec.role(value)).commit()) { "角色保存失败" }
     }
     fun setAutoSyncEnabled(enabled: Boolean) {
         check(config.edit().putBoolean("autoSync", enabled).commit()) { "无法保存自动同步选项" }
+    }
+
+    fun localAvatar(): String = synchronized(stateGuard) { IdentityProfile.avatar(config.getString(avatarKey(), null)) }
+    fun setLocalAvatar(value: String) = synchronized(stateGuard) {
+        check(config.edit().putString(avatarKey(), IdentityProfile.avatar(value)).commit()) { "头像保存失败" }
+    }
+    fun setLocalIdentity(role: String, avatar: String) = synchronized(stateGuard) {
+        check(config.edit().putString(roleKey(), ChatCodec.role(role)).putString(avatarKey(), IdentityProfile.avatar(avatar)).commit()) { "角色和头像保存失败" }
     }
 
     private fun ensureBuiltInConfiguration() {
@@ -119,6 +130,24 @@ class CloudService(context: Context) {
         Unit
     }
 
+    suspend fun requestPasswordReset(email: String): String = operation { version ->
+        PasswordRecovery { method, path, body, bearer -> request(method, path, body, bearer, version) }.requestCode(email)
+    }
+
+    suspend fun resetPassword(email: String, code: String, newPassword: String): String = operation { version ->
+        PasswordRecovery { method, path, body, bearer -> request(method, path, body, bearer, version) }.reset(email, code, newPassword)
+    }
+
+    suspend fun refreshFamily(): Unit = operation { version -> recoverFamily(version, required = false); Unit }
+
+    suspend fun updateFamilyProfile(name: String, icon: String): Unit = operation { version ->
+        val checkedName = IdentityProfile.familyName(name)
+        val checkedIcon = IdentityProfile.familyIcon(icon)
+        recoverFamily(version, required = true)
+        require(state(version).optBoolean("isOwner", false)) { "只有家庭创建者可以修改家庭资料" }
+        bindFamily(json(rpc("update_family_profile", JSONObject().put("p_name", checkedName).put("p_icon", checkedIcon), version)), version)
+    }
+
     /** Local logout immediately removes both tokens. Permanent account/family binding is retained. */
     fun logout() = synchronized(stateGuard) {
         val state = readState()
@@ -135,10 +164,11 @@ class CloudService(context: Context) {
     }
 
     suspend fun createFamily(name: String): Unit = operation { version ->
-        require(name.trim().length in 1..80) { "家庭名称须为 1 至 80 个字符" }
+        val checkedName = IdentityProfile.familyName(name)
         if (recoverFamily(version, required = false) == null) {
             markFamilyAttempt(version)
-            bindFamily(json(rpc("create_family", JSONObject().put("p_name", name.trim()), version)), version)
+            bindFamily(json(rpc("create_family", JSONObject().put("p_name", checkedName), version)), version)
+            recoverFamily(version, required = true)
         }
     }
 
@@ -316,6 +346,8 @@ class CloudService(context: Context) {
             require(!state.has("boundUser") || state.getString("boundUser") == user) { "本机账本已绑定其他账号，请使用独立应用数据" }
             require(!state.has("familyId") || state.getString("familyId") == id) { "本机账本已绑定其他家庭，请先备份并使用独立应用数据" }
             state.put("boundUser", user).put("familyId", id).put("familyName", family.getString("name"))
+                .put("familyIcon", IdentityProfile.familyIcon(family.optString("icon").ifBlank { null }))
+                .put("isOwner", family.optBoolean("is_owner", false))
             state.remove("pendingUser")
             state.remove("pendingAction")
         }

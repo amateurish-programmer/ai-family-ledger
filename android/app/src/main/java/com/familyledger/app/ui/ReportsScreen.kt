@@ -18,12 +18,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.familyledger.app.domain.*
 import java.time.YearMonth
+import java.time.LocalDate
+import android.app.DatePickerDialog
 
 @Composable fun ReportsScreen(entries: List<LedgerEntry>, month: YearMonth, onMonth: (YearMonth) -> Unit, model: LedgerViewModel, state: LedgerState) {
-    var yearly by rememberSaveable { mutableStateOf(false) }
-    val complete = remember(entries, month, yearly) { buildReport(entries, month, yearly) }
+    var periodName by rememberSaveable { mutableStateOf(ReportPeriod.MONTH.name) }
+    var selectedDay by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
+    val period = ReportPeriod.valueOf(periodName)
+    val daily = period == ReportPeriod.DAY || period == ReportPeriod.WEEK
+    val anchor = if (daily) LocalDate.parse(selectedDay) else month.atDay(1)
+    val complete = remember(entries, anchor, period) { buildReport(entries, anchor, period) }
     val report = complete.summary
-    val reportKey = "$month|$yearly|${entries.hashCode()}"
+    val reportKey = "${complete.period}|$period|${entries.hashCode()}"
     val context = LocalContext.current
     var requestAi by remember { mutableStateOf(false) }
     var exportText by remember { mutableStateOf("") }
@@ -32,16 +38,35 @@ import java.time.YearMonth
     }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 22.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         item {
-            PageHeading("收支报告", "月度与年度收支 · 本机账本统计") { IconBadge(Icons.Outlined.BarChart, sage = true) }
+            PageHeading("收支报告", "日 · 周 · 月 · 年收支统计") { IconBadge(Icons.Outlined.BarChart, sage = true) }
             Spacer(Modifier.height(18.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                FilterChip(selected = !yearly, onClick = { yearly = false }, label = { Text("月度报告") }, modifier = Modifier.heightIn(min = 48.dp))
-                FilterChip(selected = yearly, onClick = { yearly = true }, label = { Text("年度报告") }, modifier = Modifier.heightIn(min = 48.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                ReportPeriod.entries.forEach { choice ->
+                    FilterChip(selected = period == choice, onClick = {
+                        if (period != choice && (choice == ReportPeriod.DAY || choice == ReportPeriod.WEEK)) selectedDay = LocalDate.now().toString()
+                        periodName = choice.name
+                    }, label = { Text(choice.label) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp))
+                }
             }
             Spacer(Modifier.height(8.dp))
-            PeriodSelector(if (yearly) "${month.year} 年" else "${month.year} 年 ${month.monthValue} 月",
-                { onMonth(if (yearly) month.minusYears(1) else month.minusMonths(1)) },
-                { onMonth(if (yearly) month.plusYears(1) else month.plusMonths(1)) })
+            PeriodSelector(if (period == ReportPeriod.WEEK) complete.period.replace(" 至 ", "\n至 ") else complete.period,
+                { val previous = period.move(anchor, -1); if (daily) selectedDay = previous.toString() else onMonth(YearMonth.from(previous)) },
+                { val next = period.move(anchor, 1); if (daily) selectedDay = next.toString() else onMonth(YearMonth.from(next)) })
+            TextButton(onClick = {
+                DatePickerDialog(context, { _, year, monthIndex, day ->
+                    val chosen = LocalDate.of(year, monthIndex + 1, day)
+                    if (daily) selectedDay = chosen.toString() else onMonth(YearMonth.from(chosen))
+                }, anchor.year, anchor.monthValue - 1, anchor.dayOfMonth).show()
+            }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Outlined.CalendarMonth, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(when (period) {
+                    ReportPeriod.DAY -> "选择日期"
+                    ReportPeriod.WEEK -> "选择周内任一天"
+                    ReportPeriod.MONTH -> "选择日期所在月"
+                    ReportPeriod.YEAR -> "选择日期所在年"
+                })
+            }
         }
         item { SummaryBlock(report) }
         item {
@@ -50,8 +75,8 @@ import java.time.YearMonth
                 Icon(if (difference > 0) Icons.Outlined.TrendingUp else Icons.Outlined.TrendingDown, null,
                     tint = if (difference > 0) MaterialTheme.colorScheme.primary else LedgerSage)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text("支出较上期${if (difference >= 0) "增加" else "减少"} ¥ ${Money.format(kotlin.math.abs(difference))}", style = MaterialTheme.typography.titleSmall)
-                    Text("本期 ${complete.count} 笔收支 · 上期支出 ¥ ${Money.format(complete.previousExpense)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("支出较${period.previousLabel}${if (difference >= 0) "增加" else "减少"} ¥ ${Money.format(kotlin.math.abs(difference))}", style = MaterialTheme.typography.titleSmall)
+                    Text("本期 ${complete.count} 笔收支 · ${period.previousLabel}支出 ¥ ${Money.format(complete.previousExpense)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -81,7 +106,7 @@ import java.time.YearMonth
         }
         item { HorizontalDivider(Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.outlineVariant) }
         item {
-            SectionHeading(if (yearly) "全年月度趋势" else "近六个月趋势")
+            SectionHeading(complete.trendTitle)
             Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                 Text("━ 收入", color = LedgerSage, style = MaterialTheme.typography.labelMedium)
                 Text("━ 支出", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
@@ -111,7 +136,7 @@ import java.time.YearMonth
                 Icon(Icons.Outlined.AutoAwesome, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("AI 解读本期报告")
             }
             Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = { exportText = complete.text(); export.launch("家庭账本-${month}-${if (yearly) "年报" else "月报"}.txt") },
+            OutlinedButton(onClick = { exportText = complete.text(); export.launch("家庭账本-${complete.period}-${period.label}.txt") },
                 enabled = !state.busy, modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp)) { Text("导出报告") }
             if (state.reportKey == reportKey && state.reportText != null) {
                 Surface(Modifier.fillMaxWidth().padding(top = 16.dp).animateContentSize(), color = MaterialTheme.colorScheme.surfaceContainerLowest,
@@ -127,7 +152,7 @@ import java.time.YearMonth
             color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
     if (requestAi) AlertDialog(onDismissRequest = { requestAi = false }, title = { Text("发送报告汇总给 AI？") },
-        text = { Text("将发送本期收支、分类、成员和月度汇总，不发送逐笔备注。请先在设置中连接云端。") },
+        text = { Text("将发送本期收支、分类、成员和${if (daily) "每日" else "月度"}趋势汇总，不发送逐笔备注。请先在设置中连接云端。") },
         confirmButton = { TextButton(onClick = { requestAi = false; model.analyzeReport(complete, reportKey) }) { Text("生成解读") } },
         dismissButton = { TextButton(onClick = { requestAi = false }) { Text("取消") } })
 }
