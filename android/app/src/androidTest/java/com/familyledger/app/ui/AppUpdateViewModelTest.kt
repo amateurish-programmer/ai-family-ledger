@@ -13,7 +13,7 @@ import org.junit.Test
 class AppUpdateViewModelTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val release = AppUpdate(1, 12, "0.12.0", 26, AppUpdate.PACKAGE_NAME,
-        "releases/12/AI家庭账本-v0.12.0.apk", 100, "0".repeat(64), "合成更新说明", Instant.parse("2026-09-07T00:00:00Z"))
+        "releases/12/ai-family-ledger-v0.12.0.apk", 100, "0".repeat(64), "合成更新说明", Instant.parse("2026-09-07T00:00:00Z"))
     private val file = File("synthetic-only.apk")
     private fun main(action: () -> Unit) = instrumentation.runOnMainSync(action)
     private suspend fun await(model: AppUpdateViewModel, phase: UpdatePhase) = withTimeout(5000) { model.state.first { it.phase == phase } }

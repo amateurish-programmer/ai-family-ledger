@@ -8,7 +8,7 @@ import java.time.Instant
 import java.util.concurrent.CancellationException
 
 class AppUpdateTest {
-    private val manifest = """{"schemaVersion":1,"versionCode":12,"versionName":"0.12.0","minSdk":26,"packageName":"com.familyledger.app","apkPath":"releases/12/AI家庭账本-v0.12.0.apk","sizeBytes":3,"sha256":"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad","notes":"修复问题\n保留账本","publishedAt":"2026-09-07T00:00:00Z"}"""
+    private val manifest = """{"schemaVersion":1,"versionCode":12,"versionName":"0.12.0","minSdk":26,"packageName":"com.familyledger.app","apkPath":"releases/12/ai-family-ledger-v0.12.0.apk","sizeBytes":3,"sha256":"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad","notes":"修复问题\n保留账本","publishedAt":"2026-09-07T00:00:00Z"}"""
 
     @Test fun parsesReleaseAndUsesNumericCodeForUpgrade() {
         val update = AppUpdateCodec.parse(manifest)
@@ -16,8 +16,14 @@ class AppUpdateTest {
         assertTrue(update.isNewerThan(11))
         assertFalse(update.isNewerThan(12))
         assertFalse(update.isNewerThan(13))
-        assertTrue(update.downloadUrl().startsWith("https://xdgeybztysuvvwagqkvb.supabase.co/storage/v1/object/public/app-updates/releases/12/AI%"))
-        assertFalse(update.downloadUrl().contains("家庭"))
+        assertEquals("https://xdgeybztysuvvwagqkvb.supabase.co/storage/v1/object/public/app-updates/releases/12/ai-family-ledger-v0.12.0.apk", update.downloadUrl())
+    }
+
+    @Test fun rejectsUnicodeStorageKeyInsteadOfPublishingAnUndownloadableUpdate() {
+        assertThrows(IllegalArgumentException::class.java) {
+            AppUpdateCodec.parse(manifest.replace("ai-family-ledger", "AI家庭账本"))
+        }
+        assertEquals("releases/12/ai-family-ledger-v0.12.0.apk", AppUpdateCodec.parse(manifest).apkPath)
     }
 
     @Test fun rejectsUntrustedPathsAndInvalidManifestFields() {

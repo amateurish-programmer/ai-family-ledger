@@ -112,7 +112,7 @@ def validate_manifest(value):
     if (not isinstance(value["versionName"], str) or len(value["versionName"]) > 32 or
             not re.fullmatch(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", value["versionName"])):
         raise PublishError("Invalid update version name")
-    expected = f'releases/{value["versionCode"]}/AI家庭账本-v{value["versionName"]}.apk'
+    expected = f'releases/{value["versionCode"]}/ai-family-ledger-v{value["versionName"]}.apk'
     if value["packageName"] != PACKAGE or value["apkPath"] != expected:
         raise PublishError("Invalid update package or object path")
     if not isinstance(value["sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", value["sha256"]):
@@ -180,7 +180,7 @@ def local_release(apk_dir, gradle, notes):
     manifest = validate_manifest({
         "schemaVersion": 1, "versionCode": metadata["versionCode"], "versionName": metadata["versionName"],
         "minSdk": metadata["minSdk"], "packageName": metadata["applicationId"],
-        "apkPath": f'releases/{metadata["versionCode"]}/{expected_name}', "sizeBytes": len(apk_bytes),
+        "apkPath": f'releases/{metadata["versionCode"]}/ai-family-ledger-v{metadata["versionName"]}.apk', "sizeBytes": len(apk_bytes),
         "sha256": hashlib.sha256(apk_bytes).hexdigest(), "notes": note_text,
         "publishedAt": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
     })

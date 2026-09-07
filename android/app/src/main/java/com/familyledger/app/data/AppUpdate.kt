@@ -27,7 +27,7 @@ data class AppUpdate(
         require(versionName.length <= 32 && versionName.matches(Regex("(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)"))) { "更新版本名称无效" }
         require(minSdk >= 26) { "更新系统要求无效" }
         require(packageName == PACKAGE_NAME) { "更新包名不匹配" }
-        require(apkPath == "releases/$versionCode/AI家庭账本-v$versionName.apk") { "更新安装包路径无效" }
+        require(apkPath == "releases/$versionCode/ai-family-ledger-v$versionName.apk") { "更新安装包路径无效" }
         require(sizeBytes in 1..MAX_APK_BYTES) { "更新安装包大小无效（最大 50 MB）" }
         require(sha256.matches(Regex("[0-9a-f]{64}"))) { "更新校验值无效" }
         require(notes.length <= 4000 && notes.none { it.isISOControl() && it !in "\n\r\t" }) { "更新说明无效" }

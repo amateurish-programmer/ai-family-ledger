@@ -4,7 +4,7 @@
 
 ## 公开发布合同
 
-固定清单地址为 `https://xdgeybztysuvvwagqkvb.supabase.co/storage/v1/object/public/app-updates/latest.json`。APK 地址只从相同固定 bucket 与清单中的受限路径派生，每个路径段进行 UTF-8 URL 编码。清单不接受外部下载 URL，不读取任何云端账本。
+固定清单地址为 `https://xdgeybztysuvvwagqkvb.supabase.co/storage/v1/object/public/app-updates/latest.json`。APK 地址只从相同固定 bucket 与清单中的受限路径派生，每个路径段进行 UTF-8 URL 编码。清单不接受外部下载 URL，不读取任何云端账本。云端对象键使用 ASCII 文件名；本地交付文件继续使用 `AI家庭账本-v{versionName}.apk`。
 
 清单是严格 JSON 对象，字段必须完整且无额外字段、重复字段、尾随内容或数字类型转换：
 
@@ -15,7 +15,7 @@
 | versionName | 三段非负数字，无多余前导零，总长至多 32 字符 |
 | minSdk | 大于等于 26，且下载/安装时不得高于设备 API |
 | packageName | `com.familyledger.app` |
-| apkPath | `releases/{versionCode}/AI家庭账本-v{versionName}.apk` |
+| apkPath | `releases/{versionCode}/ai-family-ledger-v{versionName}.apk` |
 | sizeBytes | 整数 1 至 52,428,800（50 MiB） |
 | sha256 | 64 位小写十六进制 |
 | notes | 最多 4,000 字符纯文本，允许换行、回车和制表，禁止其他控制字符 |
@@ -37,5 +37,7 @@
 ## 验证状态
 
 新增 JVM 行为测试覆盖严格清单、路径与来源、版本比较、大小/散列错误、取消清理、原子发布结果、签名集合与向前轮换规则。设备测试用 CI 临时生成的同签名高版本 APK 和异签名 APK 验证 PackageManager 实际解析、校验、篡改拒绝、降级/版本不符拒绝、非 APK 拒绝及 FileProvider 路径和只读 Intent。
+
+首次云端链路检查发现中文对象键即使进行百分号编码，Supabase 仍返回 HTTP 400 / InvalidKey。存储合同据此改为上述 ASCII 路径；回归覆盖旧中文存储路径拒绝和完整 ASCII 下载 URL。此次修改不改变本地交付命名或版本号，需重新构建并执行 CI。
 
 本机执行 `gradlew.bat :app:testDebugUnitTest --tests com.familyledger.app.data.AppUpdateTest` 因没有 JAVA_HOME/java 未能启动；源码不等于编译通过。后续统一 CI 记录补充实际构建和测试结果。设备测试只解析合成安装包，不安装，不等于真实手机未知来源授权回流、系统覆盖安装或线上下载验收。

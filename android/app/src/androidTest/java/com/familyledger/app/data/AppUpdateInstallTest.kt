@@ -30,7 +30,7 @@ class AppUpdateInstallTest {
         val code = if (Build.VERSION.SDK_INT >= 28) archive.longVersionCode.toInt() else archive.versionCode
         val name = archive.versionName!!
         return AppUpdate(1, code, name, 26, "com.familyledger.app",
-            "releases/$code/AI家庭账本-v$name.apk", file.length(), sha256(file),
+            "releases/$code/ai-family-ledger-v$name.apk", file.length(), sha256(file),
             "合成安装校验夹具", Instant.parse("2026-09-07T00:00:00Z"))
     }
 
@@ -86,9 +86,9 @@ class AppUpdateInstallTest {
         try {
             val actual = metadata(file)
             val otherCode = actual.versionCode + 1
-            val update = actual.copy(versionCode = otherCode, apkPath = "releases/$otherCode/AI家庭账本-v${actual.versionName}.apk")
+            val update = actual.copy(versionCode = otherCode, apkPath = "releases/$otherCode/ai-family-ledger-v${actual.versionName}.apk")
             assertThrows(IllegalArgumentException::class.java) { service.verifyForInstall(update, file) }
-            val oldVersion = metadata(file).copy(versionCode = 1, versionName = "0.1.0", apkPath = "releases/1/AI家庭账本-v0.1.0.apk")
+            val oldVersion = metadata(file).copy(versionCode = 1, versionName = "0.1.0", apkPath = "releases/1/ai-family-ledger-v0.1.0.apk")
             assertThrows(IllegalArgumentException::class.java) { service.verifyForInstall(oldVersion, file) }
         } finally { file.delete() }
     }

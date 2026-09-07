@@ -60,7 +60,7 @@ class PublishTest(unittest.TestCase):
 
     def test_first_publish_verifies_apk_before_exposing_latest(self):
         result = self.publish()
-        path = "releases/11/AI家庭账本-v0.11.0.apk"
+        path = "releases/11/ai-family-ledger-v0.11.0.apk"
         manifest = json.loads(self.storage.objects["latest.json"])
         self.assertEqual(manifest["versionCode"], 11)
         self.assertEqual(manifest["versionName"], "0.11.0")
@@ -71,6 +71,14 @@ class PublishTest(unittest.TestCase):
         latest_put = self.storage.events.index(("put", "latest.json", "application/json", True))
         self.assertIn(("read", path), self.storage.events[apk_put + 1:latest_put])
         self.assertEqual(self.storage.events[-1], ("read", "latest.json"))
+
+    def test_storage_key_is_ascii_while_delivery_name_remains_chinese(self):
+        manifest = self.publish()
+        self.assertEqual(self.apk.name, "AI家庭账本-v0.11.0.apk")
+        self.assertEqual(manifest["apkPath"], "releases/11/ai-family-ledger-v0.11.0.apk")
+        self.assertTrue(all(path.isascii() for path in self.storage.objects))
+        with self.assertRaises(publisher.PublishError):
+            publisher.validate_manifest(dict(manifest, apkPath="releases/11/AI家庭账本-v0.11.0.apk"))
 
     def test_identical_retry_does_not_rewrite_objects(self):
         first = self.publish()
@@ -98,12 +106,12 @@ class PublishTest(unittest.TestCase):
         self.assertEqual(self.storage.objects["latest.json"], before)
 
     def test_orphan_apk_same_bytes_can_finish_publish(self):
-        self.storage.objects["releases/11/AI家庭账本-v0.11.0.apk"] = self.apk.read_bytes()
+        self.storage.objects["releases/11/ai-family-ledger-v0.11.0.apk"] = self.apk.read_bytes()
         self.publish()
         self.assertIn("latest.json", self.storage.objects)
 
     def test_orphan_apk_different_bytes_cannot_be_overwritten(self):
-        self.storage.objects["releases/11/AI家庭账本-v0.11.0.apk"] = b"other"
+        self.storage.objects["releases/11/ai-family-ledger-v0.11.0.apk"] = b"other"
         with self.assertRaises(publisher.PublishError):
             self.publish()
         self.assertNotIn("latest.json", self.storage.objects)
@@ -152,9 +160,9 @@ class PublishTest(unittest.TestCase):
         for version in ("00.11.0", "0.01.0", "0.11.00", "０.11.0", "0.١١.0", "1" * 29 + ".0.0"):
             with self.subTest(version=version), self.assertRaises(publisher.PublishError):
                 publisher.validate_manifest(dict(manifest, versionName=version,
-                    apkPath=f"releases/11/AI家庭账本-v{version}.apk"))
+                    apkPath=f"releases/11/ai-family-ledger-v{version}.apk"))
         for version in ("0.0.0", "1.22.333", "1" * 28 + ".0.0"):
-            candidate = dict(manifest, versionName=version, apkPath=f"releases/11/AI家庭账本-v{version}.apk")
+            candidate = dict(manifest, versionName=version, apkPath=f"releases/11/ai-family-ledger-v{version}.apk")
             self.assertEqual(publisher.validate_manifest(candidate), candidate)
 
     def test_notes_reject_iso_controls_but_keep_line_breaks_and_tabs(self):

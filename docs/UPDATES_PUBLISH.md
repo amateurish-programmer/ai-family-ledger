@@ -6,7 +6,7 @@
 
 在本仓库 `main` 手动执行 **Android APK** 工作流，勾选 `publish_release`。该选项默认关闭。启用后始终运行全部 JVM 测试、后端回归和模拟器测试；即使勾选 `build_only`，也会补跑 JVM 测试。只有 build、backend-tests、device-tests 全部成功才进入发布。`build_only` 仍跳过 lint，报告应明确区分。普通 push、PR、其他分支和其他仓库不发布。
 
-构建产物名来自 Gradle 的 `versionName`，发布任务只下载当前运行对应的一个版本 APK。发布脚本再次要求目录内恰有一个 APK 且名称与 Gradle 版本一致。版本号和包名来源 `android/app/build.gradle.kts`；本版简短说明在 `docs/update-notes.txt`。升级应同步更新这两个来源。
+构建产物名来自 Gradle 的 `versionName`，发布任务只下载当前运行对应的一个版本 APK。发布脚本再次要求目录内恰有一个 APK 且名称与 Gradle 版本一致。本地交付和 Artifact 内的 APK 保持 `AI家庭账本-v{versionName}.apk`；Storage 对象使用 ASCII 名 `ai-family-ledger-v{versionName}.apk`，避免云端拒绝中文对象 key。版本号和包名来源 `android/app/build.gradle.kts`；本版简短说明在 `docs/update-notes.txt`。升级应同步更新这两个来源。
 
 发布任务以 `publish-app-updates` 独立并发组串行执行，且不取消正在运行的发布；外层工作流也防止后续构建取消发布运行。GitHub 并发组不承诺排队顺序，脚本拒绝低版本覆盖高版本。不要在 CI 外另行并发写更新对象。
 
@@ -27,7 +27,7 @@ GitHub Actions Secret `SUPABASE_UPDATE_SERVICE_KEY` 提供服务端上传凭据�
 | versionName | 三段 ASCII 数字，各段无前导零（单独 `0` 合法），总长最多 32 字符，如 `0.11.0` |
 | minSdk | 整数，至少 26 |
 | packageName | `com.familyledger.app` |
-| apkPath | `releases/{versionCode}/AI家庭账本-v{versionName}.apk` |
+| apkPath | `releases/{versionCode}/ai-family-ledger-v{versionName}.apk`（固定 ASCII 对象路径） |
 | sizeBytes | 1 至 52,428,800 |
 | sha256 | APK 实际字节的 64 位小写十六进制 SHA-256 |
 | notes | 最多 4000 个 UTF-16 单元（与 Android 一致）的公开更新说明；禁止 ISO 控制字符，换行、回车、制表符除外 |

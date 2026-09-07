@@ -19,7 +19,7 @@ import org.junit.Test
 class AppUpdateUiTest {
     @get:Rule val compose = createComposeRule()
     private val release = AppUpdate(1, 12, "0.12.0", 26, AppUpdate.PACKAGE_NAME,
-        "releases/12/AI家庭账本-v0.12.0.apk", 18000000, "0".repeat(64), "优化家庭账本使用体验\n修复已知问题", Instant.parse("2026-09-07T00:00:00Z"))
+        "releases/12/ai-family-ledger-v0.12.0.apk", 18000000, "0".repeat(64), "优化家庭账本使用体验\n修复已知问题", Instant.parse("2026-09-07T00:00:00Z"))
 
     @Test fun updateCardShowsNotesProgressCancelAndBusyInstallGuard() {
         var state by mutableStateOf(AppUpdateState())
