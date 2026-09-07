@@ -38,6 +38,6 @@
 
 新增 JVM 行为测试覆盖严格清单、路径与来源、版本比较、大小/散列错误、取消清理、原子发布结果、签名集合与向前轮换规则。设备测试用 CI 临时生成的同签名高版本 APK 和异签名 APK 验证 PackageManager 实际解析、校验、篡改拒绝、降级/版本不符拒绝、非 APK 拒绝及 FileProvider 路径和只读 Intent。
 
-首次云端链路检查发现中文对象键即使进行百分号编码，Supabase 仍返回 HTTP 400 / InvalidKey。存储合同据此改为上述 ASCII 路径；回归覆盖旧中文存储路径拒绝和完整 ASCII 下载 URL。此次修改不改变本地交付命名或版本号，需重新构建并执行 CI。
+首次云端链路检查发现中文对象键即使进行百分号编码，Supabase 仍返回 HTTP 400 / InvalidKey。存储合同据此改为上述 ASCII 路径；回归覆盖旧中文存储路径拒绝和完整 ASCII 下载 URL。此次修改不改变本地交付命名或版本号，已重新构建并执行 CI。
 
-本机执行 `gradlew.bat :app:testDebugUnitTest --tests com.familyledger.app.data.AppUpdateTest` 因没有 JAVA_HOME/java 未能启动；源码不等于编译通过。后续统一 CI 记录补充实际构建和测试结果。设备测试只解析合成安装包，不安装，不等于真实手机未知来源授权回流、系统覆盖安装或线上下载验收。
+本机执行 `gradlew.bat :app:testDebugUnitTest --tests com.familyledger.app.data.AppUpdateTest` 因没有 JAVA_HOME/java 未能启动；源码不等于编译通过。最终 CI 34072537135 已通过编译、89项JVM和34项Android35模拟器检查，包含本模块的7项JVM与6项安装校验测试。实际匿名Storage清单和完整APK下载已核对；结果详见 [V0.11](V0.11.md)。设备测试只解析合成安装包，不安装，不等于真实手机未知来源授权回流、系统覆盖安装或手机端真实在线升级验收。

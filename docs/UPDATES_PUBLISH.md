@@ -54,3 +54,8 @@ Storage 不提供这里所用对象API的跨对象事务，正确性依赖 CI �
 本地测试不能替代 GitHub Secrets、真实 Storage权限、CDN读取、手机安装和覆盖保留数据的验收。实际云端发布结果须附对应运行记录，不能将本脚本验证通过等同于已发布。
 
 Storage缺失错误处理依据[官方错误码说明](https://supabase.com/docs/guides/storage/debugging/error-codes)；客户端可能收到HTTP400包裹的对象404，因此同时校验HTTP状态与结构化错误内容。
+
+
+## 已部署记录（2026-09-07）
+
+[CI 34072537135](https://github.com/amateurish-programmer/ai-family-ledger/actions/runs/34072537135) 的三类前置检查与publish全部成功。22项发布回归通过。latest.json与code11版本APK已上线，另从本机匿名完整下载17,828,393字节，并与该次CI安装包逐项核对版本、大小及校验值一致。内部路径为ASCII，本机交付名仍为AI家庭账本-v0.11.0.apk。云端配置与手机验收边界见 [V0.11](V0.11.md)。
