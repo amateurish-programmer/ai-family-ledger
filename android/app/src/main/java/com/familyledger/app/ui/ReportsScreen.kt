@@ -22,7 +22,7 @@ import java.time.YearMonth
 import java.time.LocalDate
 import android.app.DatePickerDialog
 
-@Composable fun ReportsScreen(entries: List<LedgerEntry>, month: YearMonth, onMonth: (YearMonth) -> Unit, model: LedgerViewModel, state: LedgerState) {
+@Composable fun ReportsScreen(entries: List<LedgerEntry>, month: YearMonth, onMonth: (YearMonth) -> Unit, model: LedgerViewModel, state: LedgerState, onOrganizeGifts: () -> Unit = {}) {
     var periodName by rememberSaveable { mutableStateOf(ReportPeriod.MONTH.name) }
     var selectedDay by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
     val period = ReportPeriod.valueOf(periodName)
@@ -107,6 +107,7 @@ import android.app.DatePickerDialog
             }
         }
         item { HorizontalDivider(Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.outlineVariant) }
+        item(key = "gift_report") { GiftReportSection(entries, period.range(anchor), onOrganizeGifts) }
         if (!daily) {
             item(key = "monthly_trend") { MonthlyTrendChart(entries, YearMonth.from(anchor)) }
         } else {

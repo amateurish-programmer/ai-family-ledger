@@ -19,7 +19,7 @@ class ConversationPersistenceTest {
     private val draft = LedgerEntry("00000000-0000-0000-0000-000000000001", EntryType.EXPENSE,
         "2026-09-06", 3680, "食品", account = "测试账户", member = "家人", recordedBy = "本人", updatedAt = 1)
     private fun open(name: String) = Room.databaseBuilder(context, LedgerDatabase::class.java, name)
-        .addMigrations(LedgerDatabase.MIGRATION_1_2, LedgerDatabase.MIGRATION_2_3).build()
+        .addMigrations(LedgerDatabase.MIGRATION_1_2, LedgerDatabase.MIGRATION_2_3, LedgerDatabase.MIGRATION_3_4).build()
 
     @Test fun logoutKeepsLoadedHistoryAndPendingProposalsVisible() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(context, LedgerDatabase::class.java).build()
@@ -122,6 +122,8 @@ class ConversationPersistenceTest {
             val repo = LedgerRepository(db)
             assertEquals(3680L, repo.allEntries().single().amountMinor)
             assertEquals("原账目", repo.allEntries().single().note)
+            assertFalse(repo.allEntries().single().isGift)
+            assertEquals("", repo.allEntries().single().counterparty)
             repo.appendChat("a", ChatMessage("new", true, "迁移后对话"), emptyList())
             assertEquals("迁移后对话", repo.chatMessages("a").single().text)
         } finally { db.close(); context.deleteDatabase(name) }

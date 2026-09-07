@@ -14,15 +14,17 @@ data class EntryEntity(
     val member: String, val recordedBy: String, val merchant: String,
     val project: String, val note: String, val currency: String,
     val updatedAt: Long, val deletedAt: Long?,
-    @ColumnInfo(defaultValue = "''") val importDataJson: String = ""
+    @ColumnInfo(defaultValue = "''") val importDataJson: String = "",
+    @ColumnInfo(defaultValue = "0") val isGift: Boolean = false,
+    @ColumnInfo(defaultValue = "''") val counterparty: String = ""
 ) {
     fun toEntry() = LedgerEntry(id, EntryType.valueOf(type), occurredOn, amountMinor,
-        categoryL1, categoryL2, account, member, recordedBy, merchant, project, note, currency, updatedAt, deletedAt, ImportOriginCodec.decode(importDataJson))
+        categoryL1, categoryL2, account, member, recordedBy, merchant, project, note, currency, updatedAt, deletedAt, ImportOriginCodec.decode(importDataJson), isGift, counterparty)
 
     companion object {
         fun from(e: LedgerEntry) = EntryEntity(e.id, e.type.name, e.occurredOn, e.amountMinor,
             e.categoryL1, e.categoryL2, e.account, e.member, e.recordedBy, e.merchant,
-            e.project, e.note, e.currency, e.updatedAt, e.deletedAt, ImportOriginCodec.encode(e.origin))
+            e.project, e.note, e.currency, e.updatedAt, e.deletedAt, ImportOriginCodec.encode(e.origin), e.isGift, e.counterparty)
     }
 }
 
@@ -59,11 +61,17 @@ interface ConversationDao {
     @Upsert suspend fun saveDrafts(drafts: ChatDraftEntity)
 }
 
-@Database(entities = [EntryEntity::class, ChatEntity::class, ChatDraftEntity::class], version = 3, exportSchema = true)
+@Database(entities = [EntryEntity::class, ChatEntity::class, ChatDraftEntity::class], version = 4, exportSchema = true)
 abstract class LedgerDatabase : RoomDatabase() {
     abstract fun ledgerDao(): LedgerDao
     abstract fun conversationDao(): ConversationDao
     companion object {
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE entries ADD COLUMN isGift INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE entries ADD COLUMN counterparty TEXT NOT NULL DEFAULT ''")
+            }
+        }
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE entries ADD COLUMN importDataJson TEXT NOT NULL DEFAULT ''")

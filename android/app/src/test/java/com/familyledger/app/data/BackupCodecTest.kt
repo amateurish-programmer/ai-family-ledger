@@ -11,6 +11,26 @@ class BackupCodecTest {
         note = "换行\n与引号\"", updatedAt = 1234
     )
 
+    @Test fun giftFieldsRoundTripAndLegacyBackupsDefaultSafely() {
+        val gift = entry.copy(isGift = true, counterparty = "张三")
+        assertEquals(gift, BackupCodec.decode(BackupCodec.encode(listOf(gift))).single())
+        val root = org.json.JSONObject(BackupCodec.encode(listOf(entry)))
+        val row = root.getJSONArray("entries").getJSONObject(0)
+        row.remove("isGift"); row.remove("counterparty")
+        assertEquals(entry, BackupCodec.decode(root.toString()).single())
+        root.put("version", 1); row.remove("origin")
+        assertEquals(entry, BackupCodec.decode(root.toString()).single())
+    }
+    @Test fun giftFieldsRejectCoercedTypesAndOversizedCounterparty() {
+        listOf("true", 1, org.json.JSONObject.NULL).forEach { bad ->
+            val root = org.json.JSONObject(BackupCodec.encode(listOf(entry)))
+            root.getJSONArray("entries").getJSONObject(0).put("isGift", bad)
+            assertThrows(IllegalArgumentException::class.java) { BackupCodec.decode(root.toString()) }
+        }
+        assertEquals("张三", validateEntry(entry.copy(counterparty = " 张三 ")).counterparty)
+        assertThrows(IllegalArgumentException::class.java) { validateEntry(entry.copy(counterparty = "人".repeat(101))) }
+    }
+
     @Test fun roundTripKeepsMoneyOwnershipAndNotes() {
         assertEquals(listOf(entry), BackupCodec.decode(BackupCodec.encode(listOf(entry))))
     }

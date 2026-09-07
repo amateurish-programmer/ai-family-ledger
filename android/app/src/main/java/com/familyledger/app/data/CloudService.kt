@@ -226,7 +226,7 @@ class CloudService(context: Context) {
     }
 
     suspend fun ai(operation: String, input: JSONObject): String = this.operation { version ->
-        require(operation in setOf("parse", "report", "chat", "analyze")) { "不支持的 AI 操作" }
+        require(operation in setOf("parse", "report", "chat", "analyze", "gift_history")) { "不支持的 AI 操作" }
         recoverFamily(version, required = true)
         val body = JSONObject().put("operation", operation).put("input", input)
         require(body.toString().toByteArray(Charsets.UTF_8).size <= 65536) { "AI 输入过长" }
@@ -534,15 +534,5 @@ class CloudService(context: Context) {
         Unit
     }
 
-    private fun hash(entry: LedgerEntry): String {
-        fun canonical(value: Any?): String = when (value) {
-            is JSONObject -> value.keys().asSequence().toList().sorted().joinToString(",", "{", "}") { JSONObject.quote(it) + ":" + canonical(value.get(it)) }
-            is JSONArray -> (0 until value.length()).joinToString(",", "[", "]") { canonical(value.get(it)) }
-            is String -> JSONObject.quote(value)
-            null, JSONObject.NULL -> "null"
-            else -> value.toString()
-        }
-        return MessageDigest.getInstance("SHA-256").digest(canonical(JSONObject(BackupCodec.encode(listOf(entry)))).toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it.toInt() and 255) }
-    }
+    private fun hash(entry: LedgerEntry): String = SyncFingerprint.hash(entry)
 }

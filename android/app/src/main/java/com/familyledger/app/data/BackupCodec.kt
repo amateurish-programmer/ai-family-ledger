@@ -16,6 +16,7 @@ object BackupCodec {
             put("categoryL1", e.categoryL1); put("categoryL2", e.categoryL2)
             put("account", e.account); put("member", e.member); put("recordedBy", e.recordedBy)
             put("merchant", e.merchant); put("project", e.project); put("note", e.note)
+            put("isGift", e.isGift); put("counterparty", e.counterparty)
             put("updatedAt", e.updatedAt); put("deletedAt", e.deletedAt ?: JSONObject.NULL)
             put("origin", e.origin?.let { JSONObject(ImportOriginCodec.encode(it)) } ?: JSONObject.NULL)
         }) }
@@ -47,7 +48,10 @@ object BackupCodec {
                     if (version == 1L) null else {
                         require(r.has("origin")) { "备份缺少导入来源字段" }
                         if (r.isNull("origin")) null else ImportOriginCodec.decode(r.getJSONObject("origin").toString())
-                    }))
+                    },
+                    if (r.has("isGift")) r.get("isGift") as? Boolean
+                        ?: throw IllegalArgumentException("isGift 必须为布尔值") else false,
+                    if (r.has("counterparty")) string(r, "counterparty") else ""))
             }
         } catch (e: IllegalArgumentException) { throw e
         } catch (_: Exception) { throw IllegalArgumentException("备份损坏或字段缺失，未恢复任何记录") }

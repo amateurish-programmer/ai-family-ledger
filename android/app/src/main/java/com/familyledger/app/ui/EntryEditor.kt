@@ -8,6 +8,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -36,6 +37,8 @@ import java.util.UUID
     var merchant by rememberSaveable { mutableStateOf(existing?.merchant ?: "") }
     var project by rememberSaveable { mutableStateOf(existing?.project ?: "") }
     var note by rememberSaveable { mutableStateOf(existing?.note ?: "") }
+    var isGift by rememberSaveable { mutableStateOf(existing?.isGift ?: false) }
+    var counterparty by rememberSaveable { mutableStateOf(existing?.counterparty ?: "") }
     var error by rememberSaveable { mutableStateOf<String?>(null) }
     var discard by remember { mutableStateOf(false) }
     BackHandler { if (!busy) discard = true }
@@ -50,7 +53,8 @@ import java.util.UUID
                         val entry = validateEntry(LedgerEntry(id = id, type = EntryType.valueOf(typeName),
                             occurredOn = validateDate(date.trim()), amountMinor = if (typeName == EntryType.BALANCE_ADJUSTMENT.name) java.math.BigDecimal(amount.trim()).movePointRight(2).longValueExact() else Money.parse(amount), categoryL1 = category,
                             categoryL2 = subcategory, account = account, member = member, recordedBy = recorder,
-                            merchant = merchant, project = project, note = note, origin = existing?.origin))
+                            merchant = merchant, project = project, note = note, origin = existing?.origin,
+                            isGift = isGift && typeName != EntryType.BALANCE_ADJUSTMENT.name, counterparty = counterparty.trim()))
                         error = null
                         onSave(entry)
                     } catch (e: ArithmeticException) { error = "金额超出范围或超过两位小数" }
@@ -92,6 +96,15 @@ import java.util.UUID
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(member, { member = it }, label = { Text("归属成员") }, enabled = !busy, singleLine = true, modifier = Modifier.weight(1f))
                 OutlinedTextField(recorder, { recorder = it }, label = { Text("记账人") }, enabled = !busy, singleLine = true, modifier = Modifier.weight(1f))
+            }
+            if (typeName != EntryType.BALANCE_ADJUSTMENT.name) {
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Checkbox(checked = isGift, onCheckedChange = { isGift = it }, enabled = !busy,
+                        modifier = Modifier.semantics { contentDescription = "人情往来标记" })
+                    Text("人情往来")
+                }
+                if (isGift) EditorField("往来对象（可选）", counterparty, busy) { counterparty = it }
+                if (isGift) Text("不确定对象可留空，稍后补全；不同称呼不会自动合并。", style = MaterialTheme.typography.bodySmall)
             }
             SectionHeading("补充信息", "选填，方便以后查找")
             EditorField("商家（可选）", merchant, busy) { merchant = it }

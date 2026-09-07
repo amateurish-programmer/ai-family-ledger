@@ -147,12 +147,12 @@ object XlsxCodec {
         parts["xl/_rels/workbook.xml.rels"] = "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" + (1..3).joinToString("") { "<Relationship Id=\"rId$it\" Type=\"$rel/worksheet\" Target=\"worksheets/sheet$it.xml\"/>" } + "<Relationship Id=\"styles\" Type=\"$rel/styles\" Target=\"styles.xml\"/></Relationships>"
         parts["xl/styles.xml"] = "<styleSheet xmlns=\"$ns\"><fonts count=\"1\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts><fills count=\"2\"><fill><patternFill patternType=\"none\"/></fill><fill><patternFill patternType=\"gray125\"/></fill></fills><borders count=\"1\"><border/></borders><cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs><cellXfs count=\"2\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/><xf numFmtId=\"2\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/></cellXfs><cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles></styleSheet>"
         names.forEachIndexed { i, name ->
-            val headers = SpreadsheetImport.headers(name)
+            val headers = SpreadsheetImport.headers(name) + SpreadsheetImport.giftHeaders
             val rows = listOf(headers) + entries.filter { it.deletedAt == null && it.type == EntryType.entries[i] }.map { e ->
                 val date = e.origin?.originalDate?.takeIf { it.startsWith(e.occurredOn) } ?: e.occurredOn
                 listOf(name, date, e.categoryL1, e.categoryL2, e.account) +
                     (if (i == 2) listOf(e.origin?.account2.orEmpty()) else emptyList()) +
-                    listOf(e.currency, Money.format(e.amountMinor), e.member, e.merchant, e.origin?.projectCategory.orEmpty(), e.project, e.recordedBy, e.note)
+                    listOf(e.currency, Money.format(e.amountMinor), e.member, e.merchant, e.origin?.projectCategory.orEmpty(), e.project, e.recordedBy, e.note, if (e.isGift) "是" else "否", e.counterparty)
             }
             val xml = buildString {
                 append("<worksheet xmlns=\"$ns\"><sheetViews><sheetView workbookViewId=\"0\"><pane ySplit=\"1\" topLeftCell=\"A2\" state=\"frozen\"/></sheetView></sheetViews><cols><col min=\"1\" max=\"14\" width=\"18\" customWidth=\"1\"/><col min=\"2\" max=\"2\" width=\"23\" customWidth=\"1\"/></cols><sheetData>")

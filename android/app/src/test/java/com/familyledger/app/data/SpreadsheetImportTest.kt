@@ -6,6 +6,23 @@ import org.junit.Test
 import java.time.LocalDate
 
 class SpreadsheetImportTest {
+    @Test fun optionalGiftColumnsRoundTripWithoutInferringLegacyCategories() {
+        val legacy = SpreadsheetImport.preview(SampleWorkbooks.book(), "old.xlsx", emptyList()).rows.single().entry!!
+        assertFalse(legacy.isGift); assertEquals("", legacy.counterparty)
+        val gift = legacy.copy(isGift = true, counterparty = "测试亲友")
+        val preview = SpreadsheetImport.preview(XlsxCodec.write(listOf(gift)), "gifts.xlsx", emptyList())
+        assertTrue(preview.rows.single().entry!!.isGift)
+        assertEquals("测试亲友", preview.rows.single().entry!!.counterparty)
+        assertEquals(gift.amountMinor, preview.rows.single().entry!!.amountMinor)
+        assertEquals(ImportStatus.SUSPECTED, SpreadsheetImport.preview(
+            SampleWorkbooks.book(suffix = "new export"), "old-again.xlsx", listOf(gift)).rows.single().status)
+    }
+    @Test fun malformedGiftFlagsAreVisibleImportErrors() {
+        val book = SampleWorkbooks.book(listOf(SampleWorkbooks.headers + SpreadsheetImport.giftHeaders,
+            SampleWorkbooks.expense + listOf("maybe", "测试亲友")))
+        assertEquals(ImportStatus.ERROR, SpreadsheetImport.preview(book, "bad.xlsx", emptyList()).rows.single().status)
+    }
+
     @Test fun reorderedHeadersAndSharedStringsPreserveOrigin() {
         val order = listOf(6, 1, 0, 4, 5, 3, 2, 7, 8, 9, 10, 11, 12)
         val bytes = SampleWorkbooks.book(listOf(order.map { SampleWorkbooks.headers[it] }, order.map { SampleWorkbooks.expense[it] }), shared = true)

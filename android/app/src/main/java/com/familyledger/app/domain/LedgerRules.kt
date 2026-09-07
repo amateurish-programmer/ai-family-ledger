@@ -21,7 +21,9 @@ data class LedgerEntry(
     val currency: String = "CNY",
     val updatedAt: Long = System.currentTimeMillis(),
     val deletedAt: Long? = null,
-    val origin: ImportOrigin? = null
+    val origin: ImportOrigin? = null,
+    val isGift: Boolean = false,
+    val counterparty: String = ""
 )
 
 data class CategoryTotal(val name: String, val amount: Long)
@@ -56,7 +58,7 @@ fun validateEntry(entry: LedgerEntry): LedgerEntry {
     listOf(entry.categoryL1, entry.account, entry.member, entry.recordedBy).forEach {
         require(it.isNotBlank()) { "分类、账户、成员和记账人不能为空" }
     }
-    listOf(entry.categoryL1, entry.categoryL2, entry.account, entry.member, entry.recordedBy, entry.merchant, entry.project).forEach {
+    listOf(entry.categoryL1, entry.categoryL2, entry.account, entry.member, entry.recordedBy, entry.merchant, entry.project, entry.counterparty).forEach {
         require(it.length <= 100) { "字段不得超过 100 个字符" }
     }
     require(entry.note.length <= 2000) { "备注不得超过 2000 个字符" }
@@ -69,7 +71,7 @@ fun validateEntry(entry: LedgerEntry): LedgerEntry {
     }
     return entry.copy(categoryL1 = entry.categoryL1.trim(), categoryL2 = entry.categoryL2.trim(),
         account = entry.account.trim(), member = entry.member.trim(), recordedBy = entry.recordedBy.trim(),
-        merchant = entry.merchant.trim(), project = entry.project.trim(), note = entry.note.trim())
+        merchant = entry.merchant.trim(), project = entry.project.trim(), note = entry.note.trim(), counterparty = entry.counterparty.trim())
 }
 
 fun summarize(entries: List<LedgerEntry>, start: LocalDate, endExclusive: LocalDate): Summary {

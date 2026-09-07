@@ -146,7 +146,7 @@ import kotlinx.coroutines.delay
                     Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Column(Modifier.weight(1f)) {
                             Text("打开 App 时同步", style = MaterialTheme.typography.titleSmall)
-                            Text("最近成功同步不足 1 分钟时跳过；手动同步随时可用", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("最近成功同步不足 5 分钟时跳过；手动同步随时可用", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Switch(checked = state.autoSync, onCheckedChange = { if (it) autoConfirm = true else model.setAutoSync(false) }, enabled = !state.busy)
                     }

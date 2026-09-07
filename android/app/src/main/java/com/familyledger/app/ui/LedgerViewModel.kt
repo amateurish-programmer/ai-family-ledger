@@ -16,6 +16,9 @@ data class LedgerState(val entries: List<LedgerEntry> = emptyList(), val loading
     val savedEntryId: String? = null, val importPreview: ImportPreview? = null,
     val selectedImportKeys: Set<String> = emptySet(), val batches: List<ImportBatch> = emptyList(),
     val quickDrafts: List<LedgerEntry> = emptyList(),
+    val giftHistoryOpen: Boolean = false, val giftCategories: List<GiftCategory> = emptyList(),
+    val selectedGiftCategories: Set<GiftCategory> = emptySet(), val giftProposals: List<GiftHistoryProposal>? = null,
+    val giftAnalyzing: Boolean = false,
     val chatMessages: List<ChatMessage> = emptyList(), val chatInput: String = "", val localRole: String = "本人",
     val cloudStatus: CloudStatus? = null, val cloudConflicts: List<CloudConflict> = emptyList(), val inviteCode: String? = null,
     val reportText: String? = null, val reportKey: String? = null, val cloudOpen: Boolean = false,
@@ -23,16 +26,25 @@ data class LedgerState(val entries: List<LedgerEntry> = emptyList(), val loading
 
 typealias LedgerSyncAction = suspend (List<LedgerEntry>, suspend (List<LedgerEntry>) -> Unit, (String) -> Unit) -> SyncResult
 
+data class GiftHistoryClient(val owner: () -> String, val analyze: suspend (org.json.JSONObject) -> String)
+
 class LedgerViewModel(private val repository: LedgerRepository, private val cloud: CloudService? = null,
     private val syncAction: LedgerSyncAction = { rows, applyRemote, progress ->
         checkNotNull(cloud) { "请先登录并加入家庭，再同步账本" }.sync(rows, applyRemote, progress)
-    }) : ViewModel() {
+    }, private val giftHistoryClient: GiftHistoryClient = GiftHistoryClient(owner = {
+        val service = checkNotNull(cloud) { "云端组件未初始化" }
+        val status = service.status()
+        require(status.email != null && status.familyId != null) { "请先登录并加入家庭" }
+        service.conversationOwner() + ":" + status.familyId
+    }, analyze = { input -> checkNotNull(cloud).ai("gift_history", input) })) : ViewModel() {
     private val mutableState = MutableStateFlow(LedgerState())
     val state = mutableState.asStateFlow()
     private var chatOwner: String? = null
     private val operationMutex = Mutex()
     private var pendingDocumentOperations = 0
     private var preparedSpreadsheet: SpreadsheetExport? = null
+    private var giftAnalysisJob: Job? = null
+    private var giftAnalysisOwner: String? = null
 
     fun launchDocumentPicker(launch: () -> Unit) {
         if (state.value.busy || state.value.loading || state.value.documentPickerOpen) return
@@ -79,6 +91,74 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         }
     }
 
+
+    fun openGiftHistory() {
+        if (state.value.busy || state.value.loading || state.value.documentPickerOpen) return
+        val categories = GiftHistoryCodec.categories(state.value.entries)
+        giftAnalysisOwner = null
+        mutableState.update { it.copy(giftHistoryOpen = true, giftCategories = categories,
+            selectedGiftCategories = categories.filter { c -> c.suggested }.toSet(), giftProposals = null) }
+    }
+    fun closeGiftHistory() {
+        if (state.value.busy) return
+        giftAnalysisOwner = null
+        mutableState.update { it.copy(giftHistoryOpen = false, giftProposals = null) }
+    }
+    fun toggleGiftCategory(category: GiftCategory) {
+        if (state.value.busy || state.value.giftProposals != null) return
+        mutableState.update { it.copy(selectedGiftCategories = if (category in it.selectedGiftCategories)
+            it.selectedGiftCategories - category else it.selectedGiftCategories + category) }
+    }
+    fun resetGiftProposals() {
+        if (!state.value.busy) {
+            giftAnalysisOwner = null
+            mutableState.update { it.copy(giftProposals = null) }
+        }
+    }
+    fun updateGiftProposal(id: String, selected: Boolean, counterparty: String) {
+        if (state.value.busy || counterparty.length > 100) return
+        mutableState.update { it.copy(giftProposals = it.giftProposals?.map { p ->
+            if (p.original.id == id) p.copy(selected = selected, counterparty = counterparty) else p
+        }) }
+    }
+    fun cancelGiftAnalysis() { giftAnalysisJob?.cancel() }
+    fun analyzeGiftHistory() = perform {
+        require(state.value.giftHistoryOpen)
+        val owner = giftHistoryClient.owner()
+        val candidates = GiftHistoryCodec.candidates(repository.allEntries(), state.value.selectedGiftCategories)
+        require(candidates.isNotEmpty()) { "所选分类没有待整理的历史收支" }
+        giftAnalysisJob = currentCoroutineContext()[Job]
+        mutableState.update { it.copy(giftAnalyzing = true, giftProposals = null) }
+        giftAnalysisOwner = null
+        try {
+            val proposals = mutableListOf<GiftHistoryProposal>()
+            val batches = GiftHistoryCodec.batches(candidates)
+            for ((index, batch) in batches.withIndex()) {
+                currentCoroutineContext().ensureActive()
+                check(giftHistoryClient.owner() == owner) { "账号已改变，请重新整理" }
+                mutableState.update { it.copy(operationStatus = "正在整理第 " + (index + 1) + " / " + batches.size + " 批…") }
+                val response = giftHistoryClient.analyze(GiftHistoryCodec.input(batch))
+                currentCoroutineContext().ensureActive()
+                proposals += GiftHistoryCodec.decode(response, batch)
+            }
+            check(giftHistoryClient.owner() == owner && state.value.giftHistoryOpen) { "账号或整理页面已改变，请重试" }
+            giftAnalysisOwner = owner
+            mutableState.update { it.copy(giftProposals = proposals) }
+        } finally {
+            giftAnalysisJob = null
+            mutableState.update { it.copy(giftAnalyzing = false) }
+        }
+    }
+    fun confirmGiftHistory() = perform {
+        require(state.value.giftHistoryOpen)
+        check(giftAnalysisOwner != null && giftHistoryClient.owner() == giftAnalysisOwner) { "账号已改变，请重新整理" }
+        val selected = state.value.giftProposals.orEmpty().filter { it.selected }
+        require(selected.isNotEmpty()) { "请勾选需要标注的记录" }
+        val count = repository.confirmGiftHistory(selected.map { it.original }, selected.associate { it.original.id to it.counterparty })
+        giftAnalysisOwner = null
+        mutableState.update { it.copy(giftProposals = null, giftHistoryOpen = false, message = "已标注 " + count + " 条原始记录为礼金，未新增账目") }
+    }
+
     fun clearMessage() { mutableState.update { it.copy(message = null) } }
     fun cancelRestore() { if (!state.value.busy) mutableState.update { it.copy(restorePreview = null) } }
     fun consumeSavedEntry() { mutableState.update { it.copy(savedEntryId = null) } }
@@ -120,7 +200,7 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         val finance = withContext(Dispatchers.Default) { FinanceContext.build(rows, today, lastSync) }
         val input = org.json.JSONObject().put("text", text).put("today", java.time.LocalDate.now().toString())
             .put("role", snapshot.localRole).put("history", history)
-            .put("finance", finance)
+            .put("finance", finance).put("giftFields", true)
             .put("members", org.json.JSONArray(snapshot.entries.map { it.member }.distinct().take(20)))
             .put("categories", org.json.JSONArray(snapshot.entries.flatMap { listOf(it.categoryL1, it.categoryL2) }.filter { it.isNotBlank() }.distinct().take(20)))
         chatMessage(true, text)
@@ -189,7 +269,7 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
     fun onForeground() {
         val snapshot = state.value
         if (snapshot.autoSync && snapshot.cloudStatus?.email != null && snapshot.cloudStatus.familyId != null &&
-            !snapshot.loading && !snapshot.busy && !snapshot.documentPickerOpen && !snapshot.spreadsheetExportReady && pendingDocumentOperations == 0 &&
+            !snapshot.loading && !snapshot.busy && !snapshot.giftHistoryOpen && !snapshot.documentPickerOpen && !snapshot.spreadsheetExportReady && pendingDocumentOperations == 0 &&
             AutoSyncPolicy.isDue(snapshot.cloudStatus.lastSync, System.currentTimeMillis())) syncCloud()
     }
     fun syncCloud() = perform(syncing = true) {

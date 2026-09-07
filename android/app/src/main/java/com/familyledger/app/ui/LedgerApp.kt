@@ -63,6 +63,10 @@ import java.time.YearMonth
         CloudScreen(model, state, snackbar)
         return
     }
+    if (state.giftHistoryOpen) {
+        GiftHistoryScreen(model, state, snackbar, model::closeGiftHistory)
+        return
+    }
     if (state.importPreview != null) {
         ImportScreen(model, state, snackbar)
         return
@@ -110,7 +114,7 @@ import java.time.YearMonth
             when (tab) {
                 0 -> QuickEntryScreen(model, state, snackbar, draftEditorKey, onEditingChange = { draftEditorKey = it })
                 1 -> LedgerScreen(state, month, { monthText = it.toString() }, { editorKey = it.id }, model::delete, model::syncCloud)
-                2 -> ReportsScreen(state.entries, month, { monthText = it.toString() }, model, state)
+                2 -> ReportsScreen(state.entries, month, { monthText = it.toString() }, model, state, onOrganizeGifts = model::openGiftHistory)
                 3 -> SettingsScreen(model, state, focusUpdates, onUpdatesFocused = { focusUpdates = false })
             }
         }
@@ -119,7 +123,7 @@ import java.time.YearMonth
 
 internal fun startupUpdateBlocked(state: LedgerState, tab: Int, editorKey: String?, draftEditorKey: String?): Boolean =
     state.busy || state.loading || state.documentPickerOpen || state.spreadsheetExportReady ||
-        state.cloudOpen || state.importPreview != null || state.restorePreview != null || editorKey != null ||
+        state.cloudOpen || state.giftHistoryOpen || state.importPreview != null || state.restorePreview != null || editorKey != null ||
         (tab == 0 && state.quickDrafts.any { it.id == draftEditorKey })
 
 @OptIn(ExperimentalMaterial3Api::class)

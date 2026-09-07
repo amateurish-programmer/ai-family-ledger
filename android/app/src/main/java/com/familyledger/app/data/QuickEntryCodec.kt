@@ -45,11 +45,16 @@ object QuickEntryCodec {
             return (0 until rows.length()).map { index ->
                 val o = rows.getJSONObject(index)
                 fun field(key: String) = o.get(key) as? String ?: throw IllegalArgumentException("AI 返回字段 $key 格式无效")
+                require(o.has("isGift") == o.has("counterparty")) { "AI 礼金字段不完整" }
+                val isGift = if (o.has("isGift")) o.get("isGift") as? Boolean ?: error("AI 礼金标记格式无效") else false
+                val counterparty = if (o.has("counterparty")) field("counterparty") else ""
+                require(isGift || counterparty.isEmpty()) { "非礼金不能指定往来人" }
                 val type = EntryType.valueOf(field("type"))
                 require(type != EntryType.BALANCE_ADJUSTMENT) { "AI 不能创建余额变更" }
                 validateEntry(LedgerEntry(UUID.randomUUID().toString(), type, validateDate(field("date")), Money.parse(field("amount")),
                     field("category"), field("subcategory"), field("account"), field("member"), field("recordedBy"),
-                    field("merchant"), field("project"), field("note")))
+                    field("merchant"), field("project"), field("note"),
+                    isGift = isGift, counterparty = counterparty))
             }
         } catch (e: IllegalArgumentException) { throw e
         } catch (_: Exception) { throw IllegalArgumentException("AI 返回内容不符合记账格式，请修改原文后重试") }

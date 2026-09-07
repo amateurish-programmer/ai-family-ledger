@@ -61,11 +61,13 @@ jobs:
         run: |
           node scripts/check-report-function.mjs
           node scripts/check-finance-chat.mjs
+          node scripts/check-gift-ai.mjs
       - name: Check family profile permissions in isolated PostgreSQL
         run: |
           psql -v ON_ERROR_STOP=1 -f supabase/tests/bootstrap.sql
           for migration in supabase/migrations/*.sql; do psql -v ON_ERROR_STOP=1 -f "$migration"; done
           psql -v ON_ERROR_STOP=1 -f supabase/tests/family_profile.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/gift_metadata.sql
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 25

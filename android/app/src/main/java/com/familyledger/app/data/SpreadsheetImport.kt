@@ -13,6 +13,14 @@ object SpreadsheetImport {
         when (sheet) { "支出" -> listOf("支出账户"); "收入" -> listOf("收入账户"); else -> listOf("账户1", "账户2") } +
         listOf("账户币种", "金额", "成员", "商家", "项目分类", "项目", "记账人", "备注")
 
+    val giftHeaders = listOf("人情往来", "往来对象")
+
+    private fun giftFlag(value: String): Boolean = when (value.trim().lowercase()) {
+        "", "否", "false", "0" -> false
+        "是", "true", "1" -> true
+        else -> throw IllegalArgumentException("人情往来须为是或否")
+    }
+
     fun preview(bytes: ByteArray, fileName: String, existing: List<LedgerEntry>): ImportPreview {
         val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
         val ids = existing.map { it.id }.toHashSet()
@@ -54,7 +62,8 @@ object SpreadsheetImport {
                         categoryL2 = get("二级分类"), account = get(headers(sheet.name)[4]),
                         member = get("成员").ifEmpty { "未指定" }, recordedBy = get("记账人").ifEmpty { "未指定" },
                         merchant = get("商家"), project = get("项目"), note = get("备注"), updatedAt = now,
-                        origin = ImportOrigin(hash, fileName.take(255), sheet.name, row.number, now, date, get("账户2"), get("项目分类"), raw)
+                        origin = ImportOrigin(hash, fileName.take(255), sheet.name, row.number, now, date, get("账户2"), get("项目分类"), raw),
+                        isGift = giftFlag(get("人情往来")), counterparty = get("往来对象")
                     ))
                     val status = when { e.id in ids -> ImportStatus.EXISTING; duplicates.isSimilar(e) -> ImportStatus.SUSPECTED; else -> ImportStatus.NEW }
                     duplicates.add(e)

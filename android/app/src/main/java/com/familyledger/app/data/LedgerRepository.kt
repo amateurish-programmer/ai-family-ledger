@@ -34,6 +34,22 @@ class LedgerRepository(private val database: LedgerDatabase) {
         val valid = rows.map { EntryEntity.from(validateEntry(it).copy(updatedAt = now)) }
         dao.insertNew(valid)
     }
+    suspend fun confirmGiftHistory(originals: List<LedgerEntry>, counterparties: Map<String, String>): Int = database.withTransaction {
+        require(originals.map { it.id }.toSet().size == originals.size &&
+            counterparties.keys == originals.map { it.id }.toSet()) { "人情提案与选中记录不一致" }
+        val current = dao.all().associateBy { it.id }
+        require(originals.all { it.deletedAt == null && current[it.id]?.toEntry() == it }) {
+            "记录已修改或删除，请重新分析人情往来"
+        }
+        val now = System.currentTimeMillis()
+        val valid = originals.map { original ->
+            EntryEntity.from(validateEntry(original.copy(isGift = true,
+                counterparty = counterparties.getValue(original.id), updatedAt = now)))
+        }
+        valid.forEach { dao.save(it) }
+        valid.size
+    }
+
     suspend fun allEntries(): List<LedgerEntry> = dao.all().map { it.toEntry() }
     suspend fun applyRemote(rows: List<LedgerEntry>) = database.withTransaction {
         val valid = rows.map { EntryEntity.from(validateEntry(it)) }
