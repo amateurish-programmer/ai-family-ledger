@@ -1,10 +1,10 @@
 # AI 家庭账本
 
-面向 Android 的家庭记账 App，采用 Kotlin + Jetpack Compose + Room。V0.11 新增设置页检查更新、下载与系统覆盖安装，并提供持久化家庭财务对话、邮箱验证码找回密码、家庭资料编辑和交互收支趋势，并修复导入导出与自动同步频率；内置家庭云服务，注册登录后创建或加入家庭即可使用。
+面向 Android 的家庭记账 App，采用 Kotlin + Jetpack Compose + Room。V1.0 支持设置页检查更新、下载与系统覆盖安装，提供持久化家庭财务对话、邮箱验证码找回密码、家庭资料编辑和交互收支趋势，并修复导入导出与自动同步频率；内置家庭云服务，注册登录后创建或加入家庭即可使用。
 
 [GitHub 仓库](https://github.com/amateurish-programmer/ai-family-ledger) · [APK 构建与下载](https://github.com/amateurish-programmer/ai-family-ledger/actions/workflows/android-ci.yml)
 
-## V0.11.0 功能
+## V1.0.0 功能
 
 - 设置页手动检查更新，查看说明、下载进度与取消重试，校验安装包后调用系统覆盖安装；更新配置内置，无需登录 GitHub。
 - 收入/支出新增、编辑、删除，关机重启后仍由 Room 保存。
@@ -25,13 +25,13 @@
 - 内置云端邮箱登录、家庭邀请、显式同步、冲突处理与打开 App 时同步；错误提示区分注册、发信和限流原因。
 - GitHub Actions 测试、lint、Debug APK 构建与下载产物。
 
-金额仅支持 CNY，以整数分保存。余额变更保留原值、不参与收支。数据库从 V0.1 非破坏性升级，JSON V2 可读取旧版备份。Supabase 与 DeepSeek 已部署，注册邮件投递和邮箱确认已有用户反馈及控制台记录；V0.9 家庭资料迁移和日周报告接口已部署，用户已保存验证码模板。测试与真机验收边界详见 [V0.11 说明](docs/V0.11.md)和[云端服务说明](docs/BACKEND_SETUP.md)。
+金额仅支持 CNY，以整数分保存。余额变更保留原值、不参与收支。数据库从 V0.1 非破坏性升级，JSON V2 可读取旧版备份。Supabase 与 DeepSeek 已部署，注册邮件投递和邮箱确认已有用户反馈及控制台记录；V0.9 家庭资料迁移和日周报告接口已部署，用户已保存验证码模板。测试与真机验收边界详见 [V1.0 说明](docs/V1.0.md)和[云端服务说明](docs/BACKEND_SETUP.md)。
 
 ## 不安装 Android Studio，获取 APK
 
-仓库已配置云端构建。每次升级自动提交经检查的源码，并生成带版本号的安装包。打开上方 **APK 构建与下载**，选择成功运行，在 Artifacts 下载 `AI家庭账本-v0.11.0`，解压并安装 `AI家庭账本-v0.11.0.apk`。后续版本名称自动读取工程版本号，不生成本机 SHA-256 文件。也可 **Run workflow** 手动重建；`auth_checks` 在仅构建模式追加全部 JVM 测试，`device_tests` 启用模拟器测试。
+仓库已配置云端构建。每次升级自动提交经检查的源码，并生成带版本号的安装包。打开上方 **APK 构建与下载**，选择成功运行，在 Artifacts 下载 `AI家庭账本-v1.0.0`，解压并安装 `AI家庭账本-v1.0.0.apk`。后续版本名称自动读取工程版本号，不生成本机 SHA-256 文件。也可 **Run workflow** 手动重建；`auth_checks` 在仅构建模式追加全部 JVM 测试，`device_tests` 启用模拟器测试。
 
-首次需手动覆盖安装 V0.11.0；后续在 App 设置页检查更新。发布需显式启用 `publish_release`，只有 JVM、模拟器及后端检查成功后才更新 Supabase 最新版本。
+已安装 V0.11.0 的用户可直接在 App 设置页检查并升级至 V1.0.0；首次安装可下载最新 APK。发布需显式启用 `publish_release`，只有 JVM、模拟器及后端检查成功后才更新 Supabase 最新版本。
 
 详细步骤见 [云端构建指南](docs/CLOUD_BUILD.md)。首次安装从空账本开始，不包含用户真实历史数据。
 
