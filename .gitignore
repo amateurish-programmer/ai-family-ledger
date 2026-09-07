@@ -26,3 +26,5 @@ dist/
 __pycache__/
 *.pyc
 *.log
+*.apk
+*.idsig

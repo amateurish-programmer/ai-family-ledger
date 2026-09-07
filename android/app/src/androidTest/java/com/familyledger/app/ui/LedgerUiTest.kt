@@ -45,6 +45,7 @@ class LedgerUiTest {
         compose.onNodeWithText("设置", useUnmergedTree = true).performClick()
         compose.waitForIdle()
         screenshot("ledger-settings.png")
+        compose.onNodeWithText("检查更新").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("家庭账号与同步").performScrollTo().performClick()
         compose.onNodeWithText("忘记密码？").performScrollTo().performClick()
         compose.onNodeWithText("找回密码").assertExists()

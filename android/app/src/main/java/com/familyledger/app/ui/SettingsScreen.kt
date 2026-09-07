@@ -98,10 +98,8 @@ import com.familyledger.app.domain.ImportBatch
             model.launchDocumentPicker { restore.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }
         }
         HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("家庭账本", style = MaterialTheme.typography.titleSmall)
-            Text("V0.10.0", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        AppUpdateSection(ledgerBusy = state.busy || state.loading || state.documentPickerOpen || state.spreadsheetExportReady)
+        Text("家庭账本", style = MaterialTheme.typography.titleSmall)
         Text("文字对话记账 · 家庭财务分析 · 家庭同步", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("登录并加入家庭后可使用对话与同步；已保存账目可离线查看和编辑。", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)

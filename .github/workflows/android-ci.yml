@@ -2,9 +2,9 @@ name: Android APK
 
 on:
   push:
-    paths: ['android/**', '.github/workflows/android-ci.yml']
+    paths: ['android/**', '.github/workflows/android-ci.yml', 'scripts/publish-app-update.py', 'scripts/test_publish_app_update.py', 'scripts/build-update-fixtures.sh', 'docs/update-notes.txt']
   pull_request:
-    paths: ['android/**', '.github/workflows/android-ci.yml']
+    paths: ['android/**', '.github/workflows/android-ci.yml', 'scripts/publish-app-update.py', 'scripts/test_publish_app_update.py', 'scripts/build-update-fixtures.sh', 'docs/update-notes.txt']
   workflow_dispatch:
     inputs:
       build_only:
@@ -19,13 +19,18 @@ on:
         description: 'Run focused cloud configuration, auth and chat tests'
         type: boolean
         default: false
+      publish_release:
+        description: 'Publish the verified APK to app updates after all tests succeed'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: android-${{ github.ref }}
-  cancel-in-progress: true
+  # A later build must not cancel an already publishing release.
+  group: android-${{ inputs.publish_release && github.run_id || github.ref }}
+  cancel-in-progress: ${{ !inputs.publish_release }}
 
 jobs:
   backend-tests:
@@ -64,6 +69,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    outputs:
+      version: ${{ steps.package.outputs.version }}
     defaults:
       run:
         working-directory: android
@@ -75,6 +82,8 @@ jobs:
           java-version: '17'
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
+      - name: Test update publication with synthetic storage
+        run: python3 -m unittest discover -s ../scripts -p test_publish_app_update.py
       - name: Test, lint and build
         if: ${{ !inputs.build_only }}
         run: bash ./gradlew testDebugUnitTest lintDebug assembleDebug --stacktrace
@@ -82,7 +91,7 @@ jobs:
         if: ${{ inputs.build_only }}
         run: bash ./gradlew assembleDebug --stacktrace
       - name: Check cloud configuration and auth errors
-        if: ${{ inputs.auth_checks && inputs.build_only }}
+        if: ${{ (inputs.auth_checks || inputs.publish_release) && inputs.build_only }}
         run: bash ./gradlew testDebugUnitTest --stacktrace
       - name: Name versioned installable package
         id: package
@@ -106,7 +115,7 @@ jobs:
             android/app/schemas/
           retention-days: 14
   device-tests:
-    if: github.event_name == 'workflow_dispatch' && inputs.device_tests
+    if: github.event_name == 'workflow_dispatch' && (inputs.device_tests || inputs.publish_release)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -116,6 +125,9 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
+      - uses: android-actions/setup-android@v3
+      - name: Build synthetic update APK fixtures
+        run: bash scripts/build-update-fixtures.sh
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -132,3 +144,27 @@ jobs:
         with:
           name: Android-device-tests-${{ github.run_number }}
           path: android/app/build/reports/androidTests/
+  publish:
+    needs: [build, backend-tests, device-tests]
+    if: >-
+      ${{ always() && github.event_name == 'workflow_dispatch' && inputs.publish_release
+          && github.repository == 'amateurish-programmer/ai-family-ledger'
+          && github.ref == 'refs/heads/main'
+          && needs.build.result == 'success' && needs.backend-tests.result == 'success'
+          && needs.device-tests.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: publish-app-updates
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: AI家庭账本-v${{ needs.build.outputs.version }}
+          path: dist/apk
+      - name: Publish APK and verified latest manifest
+        env:
+          SUPABASE_URL: https://xdgeybztysuvvwagqkvb.supabase.co
+          SUPABASE_UPDATE_SERVICE_KEY: ${{ secrets.SUPABASE_UPDATE_SERVICE_KEY }}
+        run: python3 scripts/publish-app-update.py

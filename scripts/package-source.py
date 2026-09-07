@@ -10,7 +10,7 @@ TREES = ["android", "docs", "scripts", ".github", "supabase"]
 EXCLUDED_PARTS = {"build", ".gradle", "__pycache__", ".idea", ".temp", ".branches"}
 ALLOWED_SUFFIXES = {".kt", ".kts", ".xml", ".md", ".yml", ".yaml", ".properties", ".ps1", ".py", ".json", ".sh", ".sql", ".ts", ".mjs", ".toml", ".html"}
 EXACT_BINARY = {"android/gradle/wrapper/gradle-wrapper.jar", "android/keystore/dev-debug.jks"}
-EXACT_SCRIPTS = {"android/gradlew", "android/gradlew.bat"}
+EXACT_SCRIPTS = {"android/gradlew", "android/gradlew.bat", "docs/update-notes.txt"}
 
 def source_files():
     files = [ROOT / name for name in ROOT_FILES]
