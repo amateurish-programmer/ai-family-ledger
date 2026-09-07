@@ -12,7 +12,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 data class LedgerState(val entries: List<LedgerEntry> = emptyList(), val loading: Boolean = true,
-    val busy: Boolean = false, val message: String? = null, val restorePreview: List<LedgerEntry>? = null,
+    val busy: Boolean = false, val syncing: Boolean = false, val message: String? = null, val restorePreview: List<LedgerEntry>? = null,
     val savedEntryId: String? = null, val importPreview: ImportPreview? = null,
     val selectedImportKeys: Set<String> = emptySet(), val batches: List<ImportBatch> = emptyList(),
     val quickDrafts: List<LedgerEntry> = emptyList(),
@@ -21,7 +21,12 @@ data class LedgerState(val entries: List<LedgerEntry> = emptyList(), val loading
     val reportText: String? = null, val reportKey: String? = null, val cloudOpen: Boolean = false,
     val autoSync: Boolean = false, val operationStatus: String? = null, val localAvatar: String = "person", val documentPickerOpen: Boolean = false, val spreadsheetExportReady: Boolean = false)
 
-class LedgerViewModel(private val repository: LedgerRepository, private val cloud: CloudService? = null) : ViewModel() {
+typealias LedgerSyncAction = suspend (List<LedgerEntry>, suspend (List<LedgerEntry>) -> Unit, (String) -> Unit) -> SyncResult
+
+class LedgerViewModel(private val repository: LedgerRepository, private val cloud: CloudService? = null,
+    private val syncAction: LedgerSyncAction = { rows, applyRemote, progress ->
+        checkNotNull(cloud) { "请先登录并加入家庭，再同步账本" }.sync(rows, applyRemote, progress)
+    }) : ViewModel() {
     private val mutableState = MutableStateFlow(LedgerState())
     val state = mutableState.asStateFlow()
     private var chatOwner: String? = null
@@ -187,9 +192,9 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
             !snapshot.loading && !snapshot.busy && !snapshot.documentPickerOpen && !snapshot.spreadsheetExportReady && pendingDocumentOperations == 0 &&
             AutoSyncPolicy.isDue(snapshot.cloudStatus.lastSync, System.currentTimeMillis())) syncCloud()
     }
-    fun syncCloud() = perform {
-        val result = requireCloud().sync(repository.allEntries(), applyRemote = repository::applyRemote,
-            onProgress = { progress -> mutableState.update { it.copy(operationStatus = progress) } })
+    fun syncCloud() = perform(syncing = true) {
+        val result = syncAction(repository.allEntries(), repository::applyRemote,
+            { progress -> mutableState.update { it.copy(operationStatus = progress) } })
         refreshCloud()
         mutableState.update { it.copy(cloudConflicts = result.conflicts, message =
             "同步完成，用时 ${(result.elapsedMillis + 999) / 1000} 秒、${result.requestCount} 次请求；上传 ${result.uploaded} 条、下载 ${result.downloaded} 条，${result.conflicts.size} 条冲突") }
@@ -298,11 +303,11 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         mutableState.update { it.copy(restorePreview = null, message = "已恢复 $count 条，跳过 ${rows.size - count} 条已有记录") }
     }
 
-    private fun perform(block: suspend () -> Unit) {
+    private fun perform(syncing: Boolean = false, block: suspend () -> Unit) {
         if (state.value.busy) return
         if (state.value.loading) { mutableState.update { it.copy(message = "正在加载本机数据，请稍候") }; return }
         if (!operationMutex.tryLock()) return
-        mutableState.update { it.copy(busy = true) }
+        mutableState.update { it.copy(busy = true, syncing = syncing) }
         viewModelScope.launch {
             try { runOperation(block) } finally { operationMutex.unlock() }
         }
@@ -324,7 +329,7 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         try { block() }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (e: Exception) { mutableState.update { it.copy(message = e.message ?: "操作失败，请重试") } }
-        finally { mutableState.update { it.copy(busy = false, operationStatus = null) } }
+        finally { mutableState.update { it.copy(busy = false, syncing = false, operationStatus = null) } }
     }
     private fun readLimited(input: java.io.InputStream, limit: Int): ByteArray {
         val out = java.io.ByteArrayOutputStream(); val buffer = ByteArray(8192)

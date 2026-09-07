@@ -11,6 +11,110 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AppUpdateViewModelTest {
+    @Test fun noNewVersionLeavesExistingNoticeUntouchedAndUsesPersistentQuota() = runBlocking {
+        val context = instrumentation.targetContext.applicationContext
+        val preferences = context.getSharedPreferences("startup_quota_test", android.content.Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        fun quota() = DailyStartupUpdateQuota(
+            { preferences.getString("date", null) },
+            { preferences.edit().putString("date", it).commit() })
+        val completed = CompletableDeferred<Unit>()
+        var calls = 0
+        val first = AppUpdateViewModel("1.0.0", { calls++; completed.complete(Unit); null },
+            { _, _ -> error("No download") }, { _, _ -> }, quota())
+        val restarted = AppUpdateViewModel("1.0.0", { calls++; null },
+            { _, _ -> error("No download") }, { _, _ -> }, quota())
+        try {
+            main { first.notice("已有提示"); first.checkOnStartup() }
+            withTimeout(5000) { completed.await() }
+            main { }
+            assertEquals(AppUpdateState(message = "已有提示"), first.state.value)
+            assertNull(first.startupPrompt.value)
+            // Reading with a new quota/model represents process recreation using the saved value.
+            assertFalse(quota().claim())
+            main { restarted.checkOnStartup(); restarted.check() }
+            await(restarted, UpdatePhase.IDLE)
+            assertEquals(2, calls) // first automatic + restarted manual only
+        } finally { close(first); close(restarted); preferences.edit().clear().commit() }
+    }
+
+    @Test fun existingReadyFileAndInstallRequestPreventAutomaticStateReplacement() = runBlocking {
+        var claims = 0
+        var calls = 0
+        val model = AppUpdateViewModel("1.0.0", { calls++; release }, { _, _ -> file }, { _, _ -> },
+            StartupUpdateQuota { claims++; true })
+        try {
+            main { model.check(); model.download() }; await(model, UpdatePhase.READY)
+            main { model.checkOnStartup(); model.prepareInstall() }
+            withTimeout(5000) { model.state.first { it.installRequest != null } }
+            val before = model.state.value
+            main { model.checkOnStartup() }
+            assertEquals(before, model.state.value)
+            assertEquals(0, claims)
+            assertEquals(1, calls)
+        } finally { close(model) }
+    }
+
+    @Test fun silentFailureUsesDailyQuotaButManualChecksRemainUnlimited() = runBlocking {
+        var saved: String? = null
+        var calls = 0
+        val model = AppUpdateViewModel("1.0.0", { calls++; throw java.io.IOException() },
+            { _, _ -> error("No automatic download") }, { _, _ -> },
+            DailyStartupUpdateQuota({ saved }, { saved = it; true }))
+        try {
+            main { model.checkOnStartup() }
+            withTimeout(5000) { while (saved == null) delay(10) }
+            main { }
+            // Drain the IO quota claim and the main-thread check completion.
+            withTimeout(5000) { while (calls == 0) delay(10) }
+            main { model.checkOnStartup() }
+            assertEquals(AppUpdateState(), model.state.value)
+            assertNull(model.startupPrompt.value)
+            main { model.check() }
+            await(model, UpdatePhase.IDLE)
+            main { model.check() }; await(model, UpdatePhase.IDLE)
+            assertEquals(3, calls)
+        } finally { close(model) }
+    }
+
+    @Test fun silentNewVersionCanBeDismissedWithoutLosingDownloadState() = runBlocking {
+        var claimed = false
+        val model = AppUpdateViewModel("1.0.0", { release }, { _, _ -> file }, { _, _ -> },
+            StartupUpdateQuota { if (claimed) false else { claimed = true; true } })
+        try {
+            main { model.checkOnStartup(); model.checkOnStartup() }
+            withTimeout(5000) { model.startupPrompt.first { it != null } }
+            assertEquals(release, model.state.value.update)
+            main { model.dismissStartupPrompt(); model.download() }
+            await(model, UpdatePhase.READY)
+            main { model.checkOnStartup() }
+            assertNull(model.startupPrompt.value)
+            assertEquals(file, model.state.value.file)
+            assertEquals(UpdatePhase.READY, model.state.value.phase)
+        } finally { close(model) }
+    }
+
+    @Test fun manualCheckWaitsForSilentFlightAndOwnsResult() = runBlocking {
+        val pending = CompletableDeferred<AppUpdate?>()
+        val entered = CompletableDeferred<Unit>()
+        var calls = 0
+        val model = AppUpdateViewModel("1.0.0", {
+            if (++calls == 1) { entered.complete(Unit); pending.await() } else null
+        }, { _, _ -> error("No automatic download") }, { _, _ -> }, StartupUpdateQuota { true })
+        try {
+            main { model.checkOnStartup() }
+            withTimeout(5000) { entered.await() }
+            main { model.checkOnStartup(); model.check() }
+            assertEquals(1, calls)
+            assertEquals(UpdatePhase.CHECKING, model.state.value.phase)
+            pending.complete(release)
+            await(model, UpdatePhase.IDLE)
+            assertEquals(2, calls)
+            assertNull(model.startupPrompt.value)
+            assertNull(model.state.value.update)
+            assertEquals("已是最新版本", model.state.value.message)
+        } finally { pending.complete(null); close(model) }
+    }
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val release = AppUpdate(1, 12, "0.12.0", 26, AppUpdate.PACKAGE_NAME,
         "releases/12/ai-family-ledger-v0.12.0.apk", 100, "0".repeat(64), "合成更新说明", Instant.parse("2026-09-07T00:00:00Z"))

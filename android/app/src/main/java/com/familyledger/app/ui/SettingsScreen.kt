@@ -20,9 +20,18 @@ import java.time.LocalDate
 import com.familyledger.app.data.XlsxCodec
 import com.familyledger.app.data.IdentityProfile
 import com.familyledger.app.domain.ImportBatch
+import kotlinx.coroutines.flow.first
 
-@Composable fun SettingsScreen(model: LedgerViewModel, state: LedgerState) {
+@Composable fun SettingsScreen(model: LedgerViewModel, state: LedgerState, focusUpdates: Boolean = false, onUpdatesFocused: () -> Unit = {}) {
     val resolver = LocalContext.current.contentResolver
+    val scroll = rememberScrollState()
+    LaunchedEffect(focusUpdates) {
+        if (focusUpdates) {
+            snapshotFlow { scroll.maxValue }.first { it != Int.MAX_VALUE }
+            scroll.animateScrollTo(scroll.maxValue)
+            onUpdatesFocused()
+        }
+    }
     var rollback by remember { mutableStateOf<ImportBatch?>(null) }
     var role by remember(state.localRole) { mutableStateOf(state.localRole) }
     var avatar by remember(state.localAvatar) { mutableStateOf(state.localAvatar) }
@@ -39,9 +48,9 @@ import com.familyledger.app.domain.ImportBatch
             model.launchPreparedSpreadsheet { exportExcel.launch("家庭账本-全部历史-${LocalDate.now()}.xlsx") }
         }
     }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(horizontal = 22.dp, vertical = 24.dp),
+    Column(Modifier.fillMaxSize().verticalScroll(scroll).imePadding().padding(horizontal = 22.dp, vertical = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        PageHeading("账本设置", "管理你的家庭、角色与数据") { IconBadge(Icons.Outlined.Settings, sage = true) }
+        PageHeading("账本设置", "管理你的家庭、角色与数据", syncing = state.syncing) { IconBadge(Icons.Outlined.Settings, sage = true) }
         Spacer(Modifier.height(4.dp))
         Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.large) {
             Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {

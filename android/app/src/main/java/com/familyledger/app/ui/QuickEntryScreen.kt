@@ -13,7 +13,6 @@ import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -25,12 +24,13 @@ import com.familyledger.app.domain.EntryType
 import com.familyledger.app.domain.Money
 import com.familyledger.app.data.IdentityProfile
 
-@Composable fun QuickEntryScreen(model: LedgerViewModel, state: LedgerState, snackbar: SnackbarHostState) {
-    var editing by rememberSaveable { mutableStateOf<String?>(null) }
+@OptIn(ExperimentalLayoutApi::class)
+@Composable fun QuickEntryScreen(model: LedgerViewModel, state: LedgerState, snackbar: SnackbarHostState,
+    editing: String?, onEditingChange: (String?) -> Unit) {
     val list = rememberLazyListState()
     val draft = state.quickDrafts.firstOrNull { it.id == editing }
     if (draft != null) {
-        key(draft.id) { EntryEditor(draft, state.busy, snackbar, onClose = { editing = null }, onSave = { model.updateQuickDraft(it); editing = null }) }
+        key(draft.id) { EntryEditor(draft, state.busy, snackbar, onClose = { onEditingChange(null) }, onSave = { model.updateQuickDraft(it); onEditingChange(null) }) }
         return
     }
     LaunchedEffect(state.chatMessages.size, state.quickDrafts.size, state.busy) {
@@ -42,7 +42,10 @@ import com.familyledger.app.data.IdentityProfile
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             ProfileBadge(IdentityProfile.familyIcons.first { it.id == (state.cloudStatus?.familyIcon ?: "home") })
             Column(Modifier.weight(1f)) {
-                Text("家庭账本", style = MaterialTheme.typography.titleLarge)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("家庭账本", style = MaterialTheme.typography.titleLarge, modifier = Modifier.align(Alignment.CenterVertically))
+                    if (state.syncing) Box(Modifier.align(Alignment.CenterVertically)) { SyncStatus(true) }
+                }
                 Text("${state.localRole} · ${state.cloudStatus?.familyName ?: "本机账本"}", style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -78,7 +81,7 @@ import com.familyledger.app.data.IdentityProfile
                     }
                 }
             }
-            if (state.busy) item {
+            if (state.busy && !state.syncing) item {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                     Text(state.operationStatus ?: "正在处理…", modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
@@ -106,7 +109,7 @@ import com.familyledger.app.data.IdentityProfile
                         if (e.note.isNotBlank()) Text(e.note, style = MaterialTheme.typography.bodyMedium)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                             TextButton(onClick = { model.removeQuickDraft(e.id) }, enabled = !state.busy) { Text("移除", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                            FilledTonalButton(onClick = { editing = e.id }, enabled = !state.busy) { Text("修改记录") }
+                            FilledTonalButton(onClick = { onEditingChange(e.id) }, enabled = !state.busy) { Text("修改记录") }
                         }
                     }
                 }

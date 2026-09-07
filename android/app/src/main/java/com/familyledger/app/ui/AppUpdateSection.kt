@@ -11,21 +11,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.familyledger.app.data.AppUpdateService
 import java.util.Locale
 
 @Composable fun AppUpdateSection(ledgerBusy: Boolean) {
     val context = LocalContext.current
     val service = remember(context.applicationContext) { AppUpdateService(context.applicationContext) }
-    val factory = remember(service) { object : ViewModelProvider.Factory {
-        @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T = AppUpdateViewModel(service) as T
-    } }
-    val model: AppUpdateViewModel = viewModel(factory = factory)
+    val model = rememberAppUpdateModel()
     val state by model.state.collectAsStateWithLifecycle()
     var showPermission by remember { mutableStateOf(false) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {

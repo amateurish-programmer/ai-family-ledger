@@ -51,11 +51,15 @@ import kotlinx.coroutines.delay
         } while (resendSeconds > 0)
     }
     BackHandler(enabled = !state.busy) { if (resetMode) closeReset() else model.closeCloud() }
-    Scaffold(topBar = { TopAppBar(title = { Text("家庭与云端") }, navigationIcon = {
+    Scaffold(topBar = { TopAppBar(title = {
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("家庭与云端"); SyncStatus(state.syncing)
+        }
+    }, navigationIcon = {
         IconButton(onClick = { if (resetMode) closeReset() else model.closeCloud() }, enabled = !state.busy) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回") }
     }) }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            if (state.busy) {
+            if (state.busy && !state.syncing) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
                 Text(state.operationStatus ?: "正在处理…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

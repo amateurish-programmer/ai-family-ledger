@@ -12,10 +12,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.pullToRefresh
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -29,6 +32,8 @@ import java.time.YearMonth
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var monthText by rememberSaveable { mutableStateOf(YearMonth.now().toString()) }
     var editorKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var draftEditorKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var focusUpdates by rememberSaveable { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val month = YearMonth.parse(monthText)
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
@@ -50,6 +55,9 @@ import java.time.YearMonth
             model.consumeSavedEntry()
         }
     }
+    StartupUpdateHost(
+        ledgerBusy = startupUpdateBlocked(state, tab, editorKey, draftEditorKey),
+        onOpenUpdates = { tab = 3; focusUpdates = true })
     val editor = editorKey
     if (state.cloudOpen) {
         CloudScreen(model, state, snackbar)
@@ -98,19 +106,25 @@ import java.time.YearMonth
         }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
-            if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (state.busy && !state.syncing) LinearProgressIndicator(Modifier.fillMaxWidth())
             when (tab) {
-                0 -> QuickEntryScreen(model, state, snackbar)
-                1 -> LedgerScreen(state, month, { monthText = it.toString() }, { editorKey = it.id }, model::delete)
+                0 -> QuickEntryScreen(model, state, snackbar, draftEditorKey, onEditingChange = { draftEditorKey = it })
+                1 -> LedgerScreen(state, month, { monthText = it.toString() }, { editorKey = it.id }, model::delete, model::syncCloud)
                 2 -> ReportsScreen(state.entries, month, { monthText = it.toString() }, model, state)
-                3 -> SettingsScreen(model, state)
+                3 -> SettingsScreen(model, state, focusUpdates, onUpdatesFocused = { focusUpdates = false })
             }
         }
     }
 }
 
-@Composable private fun LedgerScreen(state: LedgerState, month: YearMonth, onMonth: (YearMonth) -> Unit,
-    onEdit: (LedgerEntry) -> Unit, onDelete: (String) -> Unit) {
+internal fun startupUpdateBlocked(state: LedgerState, tab: Int, editorKey: String?, draftEditorKey: String?): Boolean =
+    state.busy || state.loading || state.documentPickerOpen || state.spreadsheetExportReady ||
+        state.cloudOpen || state.importPreview != null || state.restorePreview != null || editorKey != null ||
+        (tab == 0 && state.quickDrafts.any { it.id == draftEditorKey })
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable internal fun LedgerScreen(state: LedgerState, month: YearMonth, onMonth: (YearMonth) -> Unit,
+    onEdit: (LedgerEntry) -> Unit, onDelete: (String) -> Unit, onRefresh: () -> Unit) {
     val start = month.atDay(1)
     val end = month.plusMonths(1).atDay(1)
     val summary = remember(state.entries, month) { summarize(state.entries, start, end) }
@@ -118,9 +132,13 @@ import java.time.YearMonth
     var selected by remember { mutableStateOf<LedgerEntry?>(null) }
     var deleteEntry by remember { mutableStateOf<LedgerEntry?>(null) }
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 32.dp)) {
+    val canRefresh = !state.busy && !state.loading && !state.documentPickerOpen && !state.spreadsheetExportReady
+    val pullState = rememberPullToRefreshState()
+    Box(Modifier.fillMaxSize().pullToRefresh(state = pullState, isRefreshing = state.syncing,
+        enabled = canRefresh, onRefresh = { if (canRefresh) onRefresh() })) {
+    LazyColumn(Modifier.fillMaxSize().testTag("ledger_list"), contentPadding = PaddingValues(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 32.dp)) {
         item {
-            PageHeading("家庭账本", state.cloudStatus?.familyName?.let { "$it · 本机副本" } ?: "本机账本") {
+            PageHeading("家庭账本", state.cloudStatus?.familyName?.let { "$it · 下拉刷新" } ?: "本机账本 · 下拉同步家庭账本", syncing = state.syncing) {
                 ProfileBadge(IdentityProfile.familyIcons.first { it.id == (state.cloudStatus?.familyIcon ?: "home") })
             }
             Spacer(Modifier.height(24.dp))
@@ -150,6 +168,7 @@ import java.time.YearMonth
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .45f))
             }
         }
+    }
     }
     selected?.let { entry ->
         AlertDialog(onDismissRequest = { selected = null }, title = { Text("${entry.type.label} ¥${Money.format(entry.amountMinor)}") },

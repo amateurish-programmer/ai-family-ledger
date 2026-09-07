@@ -40,7 +40,7 @@ import android.app.DatePickerDialog
     }
     LazyColumn(Modifier.fillMaxSize().testTag("report_list"), contentPadding = PaddingValues(horizontal = 22.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         item {
-            PageHeading("收支报告", "日 · 周 · 月 · 年收支统计") { IconBadge(Icons.Outlined.BarChart, sage = true) }
+            PageHeading("收支报告", "日 · 周 · 月 · 年收支统计", syncing = state.syncing) { IconBadge(Icons.Outlined.BarChart, sage = true) }
             Spacer(Modifier.height(18.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 ReportPeriod.entries.forEach { choice ->

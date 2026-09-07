@@ -35,19 +35,52 @@ class AppUpdateViewModel(
     private val checkUpdate: suspend () -> AppUpdate?,
     private val downloadUpdate: suspend (AppUpdate, (Long, Long) -> Unit) -> File,
     private val verifyUpdate: suspend (AppUpdate, File) -> Unit,
+    private val startupQuota: StartupUpdateQuota = StartupUpdateQuota { false },
 ) : ViewModel() {
-    constructor(service: AppUpdateService) : this(service.currentVersionName, service::check, service::download,
-        { update, file -> withContext(Dispatchers.IO) { service.verifyForInstall(update, file) } })
+    constructor(service: AppUpdateService, startupQuota: StartupUpdateQuota = StartupUpdateQuota { false }) :
+        this(service.currentVersionName, service::check, service::download,
+            { update, file -> withContext(Dispatchers.IO) { service.verifyForInstall(update, file) } }, startupQuota)
 
     private val mutableState = MutableStateFlow(AppUpdateState())
     val state = mutableState.asStateFlow()
     private var operation: Job? = null
+    private var startupOperation: Job? = null
+    private var manualGeneration = 0L
+    private val mutableStartupPrompt = MutableStateFlow<AppUpdate?>(null)
+    val startupPrompt = mutableStartupPrompt.asStateFlow()
+
+    fun dismissStartupPrompt() { mutableStartupPrompt.value = null }
+
+    /** No visible checking/error state; never replace a manual operation or a downloaded file. */
+    fun checkOnStartup() {
+        if (startupOperation?.isActive == true || state.value.busy || state.value.update != null ||
+            state.value.file != null || state.value.installRequest != null) return
+        val generation = manualGeneration
+        startupOperation = viewModelScope.launch {
+            try {
+                if (!withContext(Dispatchers.IO) { startupQuota.claim() }) return@launch
+                if (generation != manualGeneration) return@launch
+                val update = checkUpdate() ?: return@launch
+                if (generation == manualGeneration && !state.value.busy && state.value.update == null &&
+                    state.value.file == null && state.value.installRequest == null) {
+                    mutableState.value = AppUpdateState(phase = UpdatePhase.AVAILABLE, update = update)
+                    mutableStartupPrompt.value = update
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { /* Startup failures intentionally remain silent for this day. */ }
+        }
+    }
 
     fun check() {
         if (state.value.busy || state.value.installRequest != null) return
+        manualGeneration++
+        dismissStartupPrompt()
+        val pendingStartup = startupOperation
         mutableState.value = AppUpdateState(phase = UpdatePhase.CHECKING)
         operation = viewModelScope.launch {
             try {
+                // A manual request bypasses the daily quota but waits for the bounded silent flight.
+                pendingStartup?.join()
                 val update = checkUpdate()
                 mutableState.value = AppUpdateState(
                     phase = if (update == null) UpdatePhase.IDLE else UpdatePhase.AVAILABLE,
@@ -61,6 +94,7 @@ class AppUpdateViewModel(
         val before = state.value
         val update = before.update ?: return
         if (before.busy || before.installRequest != null) return
+        dismissStartupPrompt()
         mutableState.value = before.copy(phase = UpdatePhase.DOWNLOADING, file = null, received = 0,
             total = update.sizeBytes, message = null, error = false)
         operation = viewModelScope.launch {

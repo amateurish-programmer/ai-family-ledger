@@ -29,10 +29,14 @@ import com.familyledger.app.data.ProfileChoice
     }
 }
 
-@Composable internal fun PageHeading(title: String, subtitle: String, trailing: (@Composable () -> Unit)? = null) {
+@OptIn(ExperimentalLayoutApi::class)
+@Composable internal fun PageHeading(title: String, subtitle: String, syncing: Boolean = false, trailing: (@Composable () -> Unit)? = null) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Text(title, style = MaterialTheme.typography.headlineLarge)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(title, style = MaterialTheme.typography.headlineLarge, modifier = Modifier.align(Alignment.CenterVertically))
+                if (syncing) Box(Modifier.align(Alignment.CenterVertically)) { SyncStatus(true) }
+            }
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (trailing != null) trailing()
