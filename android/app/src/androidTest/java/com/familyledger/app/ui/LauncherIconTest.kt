@@ -9,6 +9,9 @@ import android.graphics.drawable.AdaptiveIconDrawable
 import android.os.ParcelFileDescriptor
 import android.view.View
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.fillMaxSize
+import java.util.concurrent.atomic.AtomicBoolean
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertTrue
@@ -22,7 +25,8 @@ class LauncherIconTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val icon = context.packageManager.getApplicationIcon(context.packageName)
         assertTrue(icon is AdaptiveIconDrawable)
-        compose.setContent { AndroidView(factory = { ctx -> object : View(ctx) {
+        val drawn = AtomicBoolean(false)
+        compose.setContent { AndroidView(modifier = Modifier.fillMaxSize(), factory = { ctx -> object : View(ctx) {
             override fun onDraw(canvas: Canvas) {
                 canvas.drawColor(Color.rgb(255, 249, 238))
                 val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(82, 91, 71); textSize = 30f }
@@ -41,9 +45,12 @@ class LauncherIconTest {
                     }
                     canvas.restore()
                 }
+                drawn.set(true)
             }
         } }) }
         compose.waitForIdle()
+        compose.waitUntil(5000) { drawn.get() }
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
         val screenshot = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(
             "screencap -p /data/local/tmp/ledger-screens/launcher-v120.png")
         ParcelFileDescriptor.AutoCloseInputStream(screenshot).use { it.readBytes() }

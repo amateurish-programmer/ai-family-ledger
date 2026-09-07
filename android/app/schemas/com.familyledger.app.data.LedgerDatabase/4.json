@@ -1,0 +1,230 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 4,
+    "identityHash": "8494d5b285592d835310e6cbd25e3992",
+    "entities": [
+      {
+        "tableName": "entries",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `type` TEXT NOT NULL, `occurredOn` TEXT NOT NULL, `amountMinor` INTEGER NOT NULL, `categoryL1` TEXT NOT NULL, `categoryL2` TEXT NOT NULL, `account` TEXT NOT NULL, `member` TEXT NOT NULL, `recordedBy` TEXT NOT NULL, `merchant` TEXT NOT NULL, `project` TEXT NOT NULL, `note` TEXT NOT NULL, `currency` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, `deletedAt` INTEGER, `importDataJson` TEXT NOT NULL DEFAULT '', `isGift` INTEGER NOT NULL DEFAULT 0, `counterparty` TEXT NOT NULL DEFAULT '', PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "occurredOn",
+            "columnName": "occurredOn",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "amountMinor",
+            "columnName": "amountMinor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "categoryL1",
+            "columnName": "categoryL1",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "categoryL2",
+            "columnName": "categoryL2",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "account",
+            "columnName": "account",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "member",
+            "columnName": "member",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recordedBy",
+            "columnName": "recordedBy",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "merchant",
+            "columnName": "merchant",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "project",
+            "columnName": "project",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "note",
+            "columnName": "note",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currency",
+            "columnName": "currency",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deletedAt",
+            "columnName": "deletedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "importDataJson",
+            "columnName": "importDataJson",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          },
+          {
+            "fieldPath": "isGift",
+            "columnName": "isGift",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "counterparty",
+            "columnName": "counterparty",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_entries_occurredOn",
+            "unique": false,
+            "columnNames": [
+              "occurredOn"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_entries_occurredOn` ON `${TABLE_NAME}` (`occurredOn`)"
+          }
+        ]
+      },
+      {
+        "tableName": "chat_messages",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`sequence` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `owner` TEXT NOT NULL, `messageId` TEXT NOT NULL, `user` INTEGER NOT NULL, `text` TEXT NOT NULL, `context` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "sequence",
+            "columnName": "sequence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "owner",
+            "columnName": "owner",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "messageId",
+            "columnName": "messageId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "user",
+            "columnName": "user",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "text",
+            "columnName": "text",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "context",
+            "columnName": "context",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "sequence"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_chat_messages_owner_messageId",
+            "unique": true,
+            "columnNames": [
+              "owner",
+              "messageId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_chat_messages_owner_messageId` ON `${TABLE_NAME}` (`owner`, `messageId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "chat_drafts",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`owner` TEXT NOT NULL, `payload` TEXT NOT NULL, PRIMARY KEY(`owner`))",
+        "fields": [
+          {
+            "fieldPath": "owner",
+            "columnName": "owner",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payload",
+            "columnName": "payload",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "owner"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '8494d5b285592d835310e6cbd25e3992')"
+    ]
+  }
+}

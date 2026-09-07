@@ -106,6 +106,7 @@ import com.familyledger.app.data.IdentityProfile
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .55f))
                         Text("${e.occurredOn} · ${e.categoryL1}${if (e.categoryL2.isNotBlank()) " / ${e.categoryL2}" else ""}", style = MaterialTheme.typography.bodyMedium)
                         Text("${e.member} · ${e.account} · 记账人 ${e.recordedBy}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (e.isGift) Text("人情往来 · ${e.counterparty.ifBlank { "待补全对象" }}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
                         if (e.note.isNotBlank()) Text(e.note, style = MaterialTheme.typography.bodyMedium)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                             TextButton(onClick = { model.removeQuickDraft(e.id) }, enabled = !state.busy) { Text("移除", color = MaterialTheme.colorScheme.onSurfaceVariant) }
