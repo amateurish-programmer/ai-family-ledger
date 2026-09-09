@@ -122,7 +122,7 @@ import kotlinx.coroutines.delay
                     OutlinedButton(onClick = { model.joinFamily(invite) }, enabled = !state.busy && invite.isNotBlank(), modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp)) { Text("加入家庭") }
                 } else {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    SectionHeading(status.familyName ?: "我的家庭", "同步前由你确认，冲突由你选择")
+                    SectionHeading(status.familyName ?: "我的家庭", "账本变更后自动同步，冲突由你选择")
                     TextButton(onClick = model::refreshFamily, enabled = !state.busy) { Text("刷新家庭资料") }
                     if (status.isOwner) {
                         OutlinedTextField(editedName, { editedName = it }, label = { Text("家庭名称") }, singleLine = true, enabled = !state.busy, modifier = Modifier.fillMaxWidth())
@@ -146,7 +146,7 @@ import kotlinx.coroutines.delay
                     Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Column(Modifier.weight(1f)) {
                             Text("打开 App 时同步", style = MaterialTheme.typography.titleSmall)
-                            Text("最近成功同步不足 5 分钟时跳过；手动同步随时可用", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("只控制前台自动刷新；账本变更仍会立即同步", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Switch(checked = state.autoSync, onCheckedChange = { if (it) autoConfirm = true else model.setAutoSync(false) }, enabled = !state.busy)
                     }
@@ -174,8 +174,11 @@ import kotlinx.coroutines.delay
             }
         }
     }
-    if (syncConfirm || autoConfirm) AlertDialog(onDismissRequest = { syncConfirm = false; autoConfirm = false }, title = { Text("同步这个家庭的账目？") },
-        text = { Text("会上传本机全部账目（含导入来源与删除标记），并下载家庭成员的账目。家庭成员可读写共享账本。冲突会保留到你明确选择，不会自动覆盖。") },
+    if (syncConfirm || autoConfirm) AlertDialog(onDismissRequest = { syncConfirm = false; autoConfirm = false },
+        title = { Text(if (autoConfirm) "打开 App 时自动同步？" else "立即同步家庭账本？") },
+        text = { Text(if (autoConfirm)
+            "开启后，打开 App 或回到前台会按五分钟间隔刷新。确认记账、编辑、导入等账本变更仍会立即同步。"
+        else "会上传本机全部账目（含导入来源与删除标记），并下载家庭成员的账目。家庭成员可读写共享账本。冲突会保留到你明确选择，不会自动覆盖。") },
         confirmButton = { TextButton(onClick = { if (autoConfirm) model.setAutoSync(true) else model.syncCloud(); syncConfirm = false; autoConfirm = false }) { Text("确认") } },
         dismissButton = { TextButton(onClick = { syncConfirm = false; autoConfirm = false }) { Text("取消") } })
     resolution?.let { (conflict, remote) -> AlertDialog(onDismissRequest = { resolution = null }, title = { Text("确认处理冲突？") },

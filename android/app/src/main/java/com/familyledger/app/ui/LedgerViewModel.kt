@@ -36,7 +36,10 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         val status = service.status()
         require(status.email != null && status.familyId != null) { "请先登录并加入家庭" }
         service.conversationOwner() + ":" + status.familyId
-    }, analyze = { input -> checkNotNull(cloud).ai("gift_history", input) })) : ViewModel() {
+    }, analyze = { input -> checkNotNull(cloud).ai("gift_history", input) }),
+    private val mutationSyncEligible: (LedgerState) -> Boolean = { state ->
+        state.cloudStatus?.email != null && state.cloudStatus.familyId != null
+    }) : ViewModel() {
     private val mutableState = MutableStateFlow(LedgerState())
     val state = mutableState.asStateFlow()
     private var chatOwner: String? = null
@@ -156,7 +159,9 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         require(selected.isNotEmpty()) { "请勾选需要标注的记录" }
         val count = repository.confirmGiftHistory(selected.map { it.original }, selected.associate { it.original.id to it.counterparty })
         giftAnalysisOwner = null
-        mutableState.update { it.copy(giftProposals = null, giftHistoryOpen = false, message = "已标注 " + count + " 条原始记录为礼金，未新增账目") }
+        val localMessage = "已标注 " + count + " 条原始记录为礼金，未新增账目"
+        mutableState.update { it.copy(giftProposals = null, giftHistoryOpen = false) }
+        if (count > 0) syncAfterMutation(localMessage) else mutableState.update { it.copy(message = localMessage) }
     }
 
     fun clearMessage() { mutableState.update { it.copy(message = null) } }
@@ -232,6 +237,7 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         require(rows.isNotEmpty())
         val confirmation = repository.confirmChatDrafts(chatOwner ?: error("对话尚未加载"), rows)
         mutableState.update { it.copy(quickDrafts = emptyList(), chatMessages = it.chatMessages + confirmation) }
+        syncAfterMutation("已保存 ${rows.size} 笔记录")
     }
     private fun requireCloud() = cloud ?: error("云端组件未初始化")
     fun openCloud() { mutableState.update { it.copy(cloudOpen = true) }; refreshCloud() }
@@ -273,11 +279,30 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
             AutoSyncPolicy.isDue(snapshot.cloudStatus.lastSync, System.currentTimeMillis())) syncCloud()
     }
     fun syncCloud() = perform(syncing = true) {
+        val result = runSync()
+        mutableState.update { it.copy(message = result.compactMessage()) }
+    }
+    private suspend fun runSync(): SyncResult {
         val result = syncAction(repository.allEntries(), repository::applyRemote,
             { progress -> mutableState.update { it.copy(operationStatus = progress) } })
         refreshCloud()
-        mutableState.update { it.copy(cloudConflicts = result.conflicts, message =
-            "同步完成，用时 ${(result.elapsedMillis + 999) / 1000} 秒、${result.requestCount} 次请求；上传 ${result.uploaded} 条、下载 ${result.downloaded} 条，${result.conflicts.size} 条冲突") }
+        mutableState.update { it.copy(cloudConflicts = result.conflicts) }
+        return result
+    }
+    private suspend fun syncAfterMutation(localMessage: String) {
+        if (!mutationSyncEligible(state.value)) {
+            mutableState.update { it.copy(message = localMessage) }
+            return
+        }
+        mutableState.update { it.copy(syncing = true, operationStatus = "正在同步…") }
+        try {
+            val result = runSync()
+            mutableState.update { it.copy(message = result.compactMessage()) }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (e: Exception) {
+            mutableState.update { it.copy(message = "已保存在本机，自动同步失败：${e.message ?: "服务暂不可用"}") }
+        }
     }
     fun resolveConflict(conflict: CloudConflict, useRemote: Boolean) = perform {
         val current = repository.allEntries().firstOrNull { it.id == conflict.id }
@@ -321,15 +346,18 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         val rows = preview.rows.filter { it.key in snapshot.selectedImportKeys && it.status in listOf(ImportStatus.NEW, ImportStatus.SUSPECTED) }.mapNotNull { it.entry }
         val allowSimilar = preview.rows.filter { it.status == ImportStatus.SUSPECTED }.mapNotNull { it.entry?.id }.toSet()
         val count = repository.commitImport(rows, allowSimilar)
-        mutableState.update { it.copy(importPreview = null, selectedImportKeys = emptySet(), message = "已导入 $count 条，跳过 ${rows.size - count} 条已处理记录") }
+        val localMessage = "已导入 $count 条，跳过 ${rows.size - count} 条已处理记录"
+        mutableState.update { it.copy(importPreview = null, selectedImportKeys = emptySet()) }
         refreshBatchesNow()
+        if (count > 0) syncAfterMutation(localMessage) else mutableState.update { it.copy(message = localMessage) }
     }
     fun loadBatches() = perform { refreshBatchesNow() }
     private suspend fun refreshBatchesNow() { val batches = repository.batches(); mutableState.update { it.copy(batches = batches) } }
     fun rollbackBatch(id: String) = perform {
         val count = repository.rollbackBatch(id)
         refreshBatchesNow()
-        mutableState.update { it.copy(message = "已撤销 $count 条，其他账目保留") }
+        val localMessage = "已撤销 $count 条，其他账目保留"
+        if (count > 0) syncAfterMutation(localMessage) else mutableState.update { it.copy(message = localMessage) }
     }
     fun exportSpreadsheet(resolver: ContentResolver, uri: Uri) = performDocument {
         val exported = withContext(Dispatchers.IO) {
@@ -345,11 +373,12 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
     }
     fun save(entry: LedgerEntry) = perform {
         repository.save(entry)
-        mutableState.update { it.copy(message = "已保存", savedEntryId = entry.id) }
+        mutableState.update { it.copy(savedEntryId = entry.id) }
+        syncAfterMutation("已保存")
     }
     fun delete(id: String) = perform {
         repository.delete(id)
-        mutableState.update { it.copy(message = "已删除") }
+        syncAfterMutation("已删除")
     }
     fun export(resolver: ContentResolver, uri: Uri) = performDocument {
         withContext(Dispatchers.IO) {
@@ -380,7 +409,9 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
     fun confirmRestore() = perform {
         val rows = state.value.restorePreview ?: return@perform
         val count = repository.restore(rows)
-        mutableState.update { it.copy(restorePreview = null, message = "已恢复 $count 条，跳过 ${rows.size - count} 条已有记录") }
+        val localMessage = "已恢复 $count 条，跳过 ${rows.size - count} 条已有记录"
+        mutableState.update { it.copy(restorePreview = null) }
+        if (count > 0) syncAfterMutation(localMessage) else mutableState.update { it.copy(message = localMessage) }
     }
 
     private fun perform(syncing: Boolean = false, block: suspend () -> Unit) {
