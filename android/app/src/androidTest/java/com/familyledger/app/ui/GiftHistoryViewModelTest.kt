@@ -28,9 +28,10 @@ class GiftHistoryViewModelTest {
         val repo=LedgerRepository(db);repo.save(row())
         val original=repo.allEntries().single()
         var gate=CompletableDeferred<Unit>();var entered=CompletableDeferred<Unit>();var fail=false
+        var syncCalls=0
         val model=LedgerViewModel(repo,giftHistoryClient=GiftHistoryClient({"fixture"},{ input ->
             entered.complete(Unit);gate.await();if(fail) error("合成失败");response(input)
-        }))
+        }), syncAction={ _,_,_->syncCalls++;SyncResult(1,0,emptyList())}, mutationSyncEligible={true})
         try {
             withTimeout(5000) {model.state.first {!it.loading}}
             main {model.openGiftHistory();model.analyzeGiftHistory()}
@@ -52,6 +53,7 @@ class GiftHistoryViewModelTest {
             withTimeout(5000) {model.state.first {!it.busy && !it.giftHistoryOpen}}
             val saved=repo.allEntries().single();assertTrue(saved.isGift);assertEquals("",saved.counterparty)
             assertEquals(original,saved.copy(isGift=false,counterparty="",updatedAt=original.updatedAt))
+            assertEquals(1,syncCalls);assertEquals("上传 1 条",model.state.value.message)
         } finally {gate.complete(Unit);main {model.viewModelScope.cancel()};db.close()}
     }
     @Test fun accountChangeRejectsConfirmationWithoutWriting() = runBlocking {
