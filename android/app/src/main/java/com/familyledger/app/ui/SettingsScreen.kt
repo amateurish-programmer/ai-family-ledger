@@ -79,7 +79,9 @@ import kotlinx.coroutines.flow.first
         Button(onClick = { model.setLocalIdentity(role, avatar) }, enabled = !state.busy && role.isNotBlank() && (role.trim() != state.localRole || avatar != state.localAvatar),
             modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp)) { Text("保存角色") }
         Text("更改角色不会修改已有记录，也不会改变家庭权限。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        SettingsAction(Icons.Outlined.PeopleOutline, "家庭账号与同步", state.cloudStatus?.familyName ?: "登录账号，与家人共享账本", !state.busy, model::openCloud)
+        HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
+        Text("家庭账号与同步", style = MaterialTheme.typography.titleSmall)
+        SettingsAction(Icons.Outlined.PeopleOutline, "管理家庭账号与同步", state.cloudStatus?.familyName ?: "登录账号，与家人共享账本", !state.busy, model::openCloud)
         HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
         SectionHeading("历史账本", "Excel 适合整理与查看，换机请使用完整备份。")
         SettingsAction(Icons.Outlined.FileUpload, "导入随手记 Excel", ".xlsx · 人民币 · 先预览再导入", !state.busy && !state.loading) {
@@ -109,8 +111,8 @@ import kotlinx.coroutines.flow.first
         HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
         AppUpdateSection(ledgerBusy = state.busy || state.loading || state.documentPickerOpen || state.spreadsheetExportReady)
         Text("家庭账本", style = MaterialTheme.typography.titleSmall)
-        Text("文字对话记账 · 家庭财务分析 · 家庭同步", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("登录并加入家庭后可使用对话与同步；已保存账目可离线查看和编辑。", style = MaterialTheme.typography.bodySmall,
+        Text("文字记账 · 家庭财务分析 · 家庭同步", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("登录并加入家庭后可使用记账与同步；已保存账目可离线查看和编辑。", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(12.dp))
     }

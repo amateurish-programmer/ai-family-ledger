@@ -95,7 +95,7 @@ import java.time.YearMonth
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
-                listOf("对话", "账本", "报表", "设置").forEachIndexed { index, title ->
+                listOf("记账", "账本", "报表", "设置").forEachIndexed { index, title ->
                     NavigationBarItem(selected = tab == index, onClick = { tab = index },
                         icon = { Icon(when (index) {
                             0 -> Icons.Outlined.ChatBubbleOutline
@@ -157,7 +157,7 @@ internal fun startupUpdateBlocked(state: LedgerState, tab: Int, editorKey: Strin
             Spacer(Modifier.height(12.dp))
             if (state.loading) CircularProgressIndicator(Modifier.padding(24.dp))
             else if (entries.isEmpty()) {
-                EmptyLedger("这个月还没有记录", "在「对话」中记下第一笔收支。")
+                EmptyLedger("这个月还没有记录", "在「记账」中记下第一笔收支。")
             }
         }
         entries.groupBy { it.occurredOn }.forEach { (date, daily) ->

@@ -24,6 +24,12 @@ import com.familyledger.app.domain.EntryType
 import com.familyledger.app.domain.Money
 import com.familyledger.app.data.IdentityProfile
 
+internal fun chatInputEnabled(state: LedgerState): Boolean =
+    !state.loading && !state.chatSending && state.quickDrafts.isEmpty() && (!state.busy || state.syncing)
+
+internal fun chatSendEnabled(state: LedgerState): Boolean =
+    chatInputEnabled(state) && state.chatInput.isNotBlank()
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable fun QuickEntryScreen(model: LedgerViewModel, state: LedgerState, snackbar: SnackbarHostState,
     editing: String?, onEditingChange: (String?) -> Unit) {
@@ -125,7 +131,7 @@ import com.familyledger.app.data.IdentityProfile
             Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
                 AnimatedVisibility(state.cloudStatus?.email == null || state.cloudStatus.familyId == null) {
                     TextButton(onClick = model::openCloud, enabled = !state.busy) {
-                        Icon(Icons.Outlined.PeopleOutline, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("登录并加入家庭，开始对话")
+                        Icon(Icons.Outlined.PeopleOutline, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("登录并加入家庭，开始记账")
                     }
                 }
                 Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -134,14 +140,14 @@ import com.familyledger.app.data.IdentityProfile
                         shape = RoundedCornerShape(24.dp), colors = OutlinedTextFieldDefaults.colors(
                             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
                             unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant),
-                        enabled = !state.busy && !state.loading && state.quickDrafts.isEmpty())
+                        enabled = chatInputEnabled(state))
                     FilledIconButton(onClick = model::sendChat,
                         modifier = Modifier.size(56.dp),
-                        enabled = !state.busy && !state.loading && state.chatInput.isNotBlank() && state.quickDrafts.isEmpty()) {
+                        enabled = chatSendEnabled(state)) {
                         Icon(Icons.AutoMirrored.Outlined.Send, contentDescription = "发送")
                     }
                 }
-                Text(if (state.quickDrafts.isNotEmpty()) "先确认或移除上方记录，再继续对话。" else "AI 处理本轮文字与收支汇总；分析基于本机账本。",
+                Text(if (state.quickDrafts.isNotEmpty()) "先确认或移除上方记录，再继续记账。" else "AI 处理本轮文字与收支汇总；分析基于本机账本。",
                     Modifier.padding(top = 8.dp, start = 6.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }

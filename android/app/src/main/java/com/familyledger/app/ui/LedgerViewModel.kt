@@ -22,7 +22,8 @@ data class LedgerState(val entries: List<LedgerEntry> = emptyList(), val loading
     val chatMessages: List<ChatMessage> = emptyList(), val chatInput: String = "", val localRole: String = "本人",
     val cloudStatus: CloudStatus? = null, val cloudConflicts: List<CloudConflict> = emptyList(), val inviteCode: String? = null,
     val reportText: String? = null, val reportKey: String? = null, val cloudOpen: Boolean = false,
-    val autoSync: Boolean = false, val operationStatus: String? = null, val localAvatar: String = "person", val documentPickerOpen: Boolean = false, val spreadsheetExportReady: Boolean = false)
+    val autoSync: Boolean = false, val operationStatus: String? = null, val localAvatar: String = "person", val documentPickerOpen: Boolean = false, val spreadsheetExportReady: Boolean = false,
+    val chatSending: Boolean = false)
 
 typealias LedgerSyncAction = suspend (List<LedgerEntry>, suspend (List<LedgerEntry>) -> Unit, (String) -> Unit) -> SyncResult
 
@@ -186,7 +187,7 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         repository.saveChatDrafts(chatOwner ?: error("对话尚未加载"), drafts)
         mutableState.update { it.copy(quickDrafts = drafts) }
     }
-    fun sendChat() = perform {
+    fun sendChat() = perform(chatSending = true) {
         restoreConversation()
         check(chatOwner == (cloud?.conversationOwner() ?: "local")) { "账号已改变，请重新发送" }
         val snapshot = state.value
@@ -414,11 +415,11 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         if (count > 0) syncAfterMutation(localMessage) else mutableState.update { it.copy(message = localMessage) }
     }
 
-    private fun perform(syncing: Boolean = false, block: suspend () -> Unit) {
+    private fun perform(syncing: Boolean = false, chatSending: Boolean = false, block: suspend () -> Unit) {
         if (state.value.busy) return
         if (state.value.loading) { mutableState.update { it.copy(message = "正在加载本机数据，请稍候") }; return }
         if (!operationMutex.tryLock()) return
-        mutableState.update { it.copy(busy = true, syncing = syncing) }
+        mutableState.update { it.copy(busy = true, syncing = syncing, chatSending = chatSending) }
         viewModelScope.launch {
             try { runOperation(block) } finally { operationMutex.unlock() }
         }
@@ -440,7 +441,7 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         try { block() }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (e: Exception) { mutableState.update { it.copy(message = e.message ?: "操作失败，请重试") } }
-        finally { mutableState.update { it.copy(busy = false, syncing = false, operationStatus = null) } }
+        finally { mutableState.update { it.copy(busy = false, syncing = false, chatSending = false, operationStatus = null) } }
     }
     private fun readLimited(input: java.io.InputStream, limit: Int): ByteArray {
         val out = java.io.ByteArrayOutputStream(); val buffer = ByteArray(8192)

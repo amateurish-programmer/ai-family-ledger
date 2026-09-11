@@ -74,7 +74,7 @@ import kotlinx.coroutines.delay
             }
             if (status == null) Text("账号服务暂不可用，本机记账仍可使用。请查看错误提示后重试。")
             if (status?.email == null) {
-                SectionHeading(if (resetMode) "找回密码" else "登录家庭账号", if (resetMode) "通过邮箱验证码设置新密码" else "登录后即可对话记账与同步")
+                SectionHeading(if (resetMode) "找回密码" else "登录家庭账号", if (resetMode) "通过邮箱验证码设置新密码" else "登录后即可记账与同步")
                 OutlinedTextField(email, { email = it }, label = { Text("邮箱") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email), singleLine = true, enabled = !state.busy, modifier = Modifier.fillMaxWidth())
                 if (resetMode) {
                     OutlinedButton(onClick = {
