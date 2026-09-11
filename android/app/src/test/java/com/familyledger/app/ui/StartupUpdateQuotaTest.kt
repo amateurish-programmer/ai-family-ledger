@@ -5,6 +5,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class StartupUpdateQuotaTest {
+    @Test fun foregroundQuotaAllowsAFreshCheckEveryTimeTheAppStarts() {
+        val quota = ForegroundStartupUpdateQuota()
+        assertTrue(quota.claim())
+        assertTrue(quota.claim())
+        assertTrue(quota.claim())
+    }
+
     @Test fun sameDayAndRecreatedGateCannotRetryButNextLocalDayCan() {
         var saved: String? = null
         var today = LocalDate.of(2026, 9, 7)

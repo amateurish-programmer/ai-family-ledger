@@ -3,8 +3,13 @@ package com.familyledger.app.ui
 import java.time.LocalDate
 
 fun interface StartupUpdateQuota {
-    /** Persist the date before allowing the request. Failed requests still consume this claim. */
+    /** Claim one automatic foreground check. */
     fun claim(): Boolean
+}
+
+/** Automatic checks are allowed again whenever the app enters the foreground. */
+class ForegroundStartupUpdateQuota : StartupUpdateQuota {
+    override fun claim(): Boolean = true
 }
 
 class DailyStartupUpdateQuota(

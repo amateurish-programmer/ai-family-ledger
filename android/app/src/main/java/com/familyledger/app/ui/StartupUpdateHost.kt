@@ -31,14 +31,10 @@ import com.familyledger.app.data.AppUpdateService
             .filterIsInstance<ComponentActivity>().first()
     }
     val factory = remember(application) {
-        val preferences = application.getSharedPreferences("app_update_startup", Context.MODE_PRIVATE)
-        val quota = DailyStartupUpdateQuota(
-            { preferences.getString("last_attempt_local_date", null) },
-            { preferences.edit().putString("last_attempt_local_date", it).commit() })
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                AppUpdateViewModel(AppUpdateService(application), quota) as T
+                AppUpdateViewModel(AppUpdateService(application), ForegroundStartupUpdateQuota()) as T
         }
     }
     return viewModel(viewModelStoreOwner = owner, factory = factory)
