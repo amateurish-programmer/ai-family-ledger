@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { stripTypeScriptTypes } from 'node:module';
 import { runInNewContext } from 'node:vm';
 import assert from 'node:assert/strict';
-let handler, generated, sent;
+let handler, generated, generatedQueue, sent;
 let quota = true;
 let providerCalls = 0;
 const finance = { scope: '本机全部人民币收支', facts: [
@@ -23,12 +23,16 @@ const sandbox = {
     if (url.endsWith('/get_my_family')) return Response.json({ id: 'fixture-family' });
     if (url.endsWith('/consume_ai_quota')) return Response.json(quota);
     providerCalls++; sent = JSON.parse(init.body);
-    return Response.json({ choices: [{ finish_reason: 'stop', message: { content: generated } }] });
+    const content = generatedQueue?.length ? generatedQueue.shift() : generated;
+    if (content === '__HTTP_503__') return new Response('{"error":"fixture"}', { status: 503 });
+    return Response.json({ choices: [{ finish_reason: 'stop', message: { content } }] });
   },
 };
 runInNewContext(stripTypeScriptTypes(readFileSync('supabase/functions/ledger-ai/index.ts', 'utf8'), { mode: 'transform' }), sandbox);
 async function call(operation, payload, output) {
-  generated = typeof output === 'string' ? output : JSON.stringify(output);
+  const outputs = Array.isArray(output) ? output : [output];
+  generatedQueue = outputs.map(item => typeof item === 'string' ? item : JSON.stringify(item));
+  generated = generatedQueue[0];
   const response = await handler(new Request('https://project.example.test/functions/v1/ledger-ai', {
     method: 'POST', headers: { Authorization: 'Bearer fixture-token-123456789012345', 'Content-Type': 'application/json' },
     body: JSON.stringify({ operation, input: payload }),
@@ -66,4 +70,17 @@ assert.equal(result.status, 200); assert.ok(result.body.result.includes('程序�
 const draft = { type: 'EXPENSE', amount: '36.80', date: '2026-09-06', category: '食品', subcategory: '', account: '未指定', member: '老婆', recordedBy: '老公', merchant: '', project: '', note: '午饭36.8' };
 result = await call('chat', { ...input, text: '老婆午饭36.8，记一下' }, { reply: '已保存', entries: [draft], query: null });
 assert.equal(result.status, 200); assert.ok(JSON.parse(result.body.result).reply.includes('待确认')); checks++;
+const callsBeforeRepair = providerCalls;
+const salaryDraft = { ...draft, type: 'INCOME', amount: '5450', category: '职业收入', subcategory: '工资', member: '老婆', note: '今天老婆工资入账5450' };
+result = await call('chat', { ...input, text: '今天老婆工资入账5450' }, [
+  { reply: '格式错误', entries: [salaryDraft], query: null, extra: true },
+  { reply: '已重新整理', entries: [salaryDraft], query: null },
+]);
+assert.equal(result.status, 200); assert.ok(JSON.parse(result.body.result).reply.includes('待确认'));
+assert.equal(providerCalls, callsBeforeRepair + 2);
+assert.ok(sent.messages[0].content.includes('工资入账'));
+assert.ok(sent.messages[2].content.includes('上一次回答未通过 JSON 格式校验')); checks++;
+const callsBeforeUpstreamFailure = providerCalls;
+result = await call('chat', input, '__HTTP_503__');
+assert.equal(result.status, 502); assert.equal(providerCalls, callsBeforeUpstreamFailure + 1); checks++;
 console.log(`Finance chat regression checks: ${checks} passed. No live requests.`);
