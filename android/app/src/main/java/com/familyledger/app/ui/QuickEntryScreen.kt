@@ -28,7 +28,7 @@ internal fun chatInputEnabled(state: LedgerState): Boolean =
     !state.loading && !state.chatSending && state.quickDrafts.isEmpty() && (!state.busy || state.syncing)
 
 internal fun chatSendEnabled(state: LedgerState): Boolean =
-    chatInputEnabled(state) && state.chatInput.isNotBlank()
+    chatInputEnabled(state) && !state.busy && state.chatInput.isNotBlank()
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable fun QuickEntryScreen(model: LedgerViewModel, state: LedgerState, snackbar: SnackbarHostState,
