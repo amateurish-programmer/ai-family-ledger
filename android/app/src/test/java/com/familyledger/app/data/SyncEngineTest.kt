@@ -130,6 +130,28 @@ class SyncEngineTest {
         assertEquals(3L, h.cloud.getValue(rows[1].id).entry.deletedAt)
     }
 
+    @Test fun remoteDeletionWinsOverUneditedLocalRowWithoutSyncIndex() = runBlocking {
+        val row = entry(1).copy(updatedAt = 1)
+        val h = Harness(listOf(row)).apply {
+            cloud[row.id] = SyncRemote(row.copy(deletedAt = 2), 2)
+        }
+        val result = h.run(listOf(row))
+        assertTrue(result.conflicts.isEmpty())
+        assertEquals(1, result.downloaded)
+        assertEquals(2L, h.local.getValue(row.id).deletedAt)
+    }
+
+    @Test fun newerLocalEditStillConflictsWithRemoteDeletion() = runBlocking {
+        val row = entry(1).copy(updatedAt = 3, note = "本机修改")
+        val h = Harness(listOf(row)).apply {
+            cloud[row.id] = SyncRemote(row.copy(updatedAt = 1, deletedAt = 2), 2)
+        }
+        val result = h.run(listOf(row))
+        assertEquals(1, result.conflicts.size)
+        assertEquals(0, result.downloaded)
+        assertNull(h.local.getValue(row.id).deletedAt)
+    }
+
     @Test fun failedRoomTransactionNeverAdvancesIndexes() = runBlocking {
         val h = Harness(listOf(entry(1))).apply { failApply = true }
         assertTrue(runCatching { h.run() }.isFailure)

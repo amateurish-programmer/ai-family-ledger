@@ -55,8 +55,10 @@ internal class SyncEngine(
                 val known = indexes[id]
                 val remoteHash = hash(row.entry)
                 val ownHash = entry?.let(hash)
+                val remoteDeletedAt = row.entry.deletedAt
                 when {
-                    entry == null || (known != null && ownHash == known.hash) -> {
+                    entry == null || (known != null && ownHash == known.hash) ||
+                        (entry.deletedAt == null && remoteDeletedAt != null && entry.updatedAt <= remoteDeletedAt) -> {
                         downloads += row.entry
                         accepted[id] = SyncIndex(row.revision, remoteHash)
                     }
