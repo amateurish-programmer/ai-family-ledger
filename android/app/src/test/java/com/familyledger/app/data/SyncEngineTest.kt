@@ -149,7 +149,7 @@ class SyncEngineTest {
         val result = h.run(listOf(row))
         assertEquals(1, result.conflicts.size)
         assertEquals(0, result.downloaded)
-        assertNull(h.local.getValue(row.id).deletedAt)
+        assertTrue(h.local.isEmpty())
     }
 
     @Test fun failedRoomTransactionNeverAdvancesIndexes() = runBlocking {
