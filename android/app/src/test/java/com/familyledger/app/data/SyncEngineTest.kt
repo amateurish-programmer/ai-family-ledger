@@ -141,6 +141,32 @@ class SyncEngineTest {
         assertEquals(2L, h.local.getValue(row.id).deletedAt)
     }
 
+    @Test fun newerRemoteTombstoneWinsWithoutConflictWhenBothSidesDeleted() = runBlocking {
+        val row = entry(1)
+        val localDeleted = row.copy(updatedAt = 2, deletedAt = 2)
+        val remoteDeleted = row.copy(updatedAt = 3, deletedAt = 3)
+        val h = Harness(listOf(remoteDeleted)).apply {
+            cloud[row.id] = SyncRemote(remoteDeleted, 2)
+        }
+        val result = h.run(listOf(localDeleted))
+        assertTrue(result.conflicts.isEmpty())
+        assertEquals(1, result.downloaded)
+        assertEquals(3L, h.local.getValue(row.id).deletedAt)
+    }
+
+    @Test fun newerLocalTombstoneUploadsWithoutConflictWhenBothSidesDeleted() = runBlocking {
+        val row = entry(1)
+        val h = Harness(listOf(row)).apply {
+            known(listOf(row))
+            cloud[row.id] = SyncRemote(row.copy(updatedAt = 2, deletedAt = 2), 2)
+        }
+        val result = h.run(listOf(row.copy(updatedAt = 3, deletedAt = 3)))
+        assertTrue(result.conflicts.isEmpty())
+        assertEquals(1, result.uploaded)
+        assertEquals(3L, h.cloud.getValue(row.id).entry.deletedAt)
+        assertEquals(3L, h.indexes.getValue(row.id).revision)
+    }
+
     @Test fun newerLocalEditStillConflictsWithRemoteDeletion() = runBlocking {
         val row = entry(1).copy(updatedAt = 3, note = "本机修改")
         val h = Harness(listOf(row)).apply {
