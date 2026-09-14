@@ -25,7 +25,9 @@ object QuickEntryCodec {
             require(!Regex("^\\s*(个|件|斤|公斤|袋|次|张)").containsMatchIn(withoutDate.substring(numbers.single().range.last + 1))) { "请写出金额，数量不能直接作为金额" }
             val money = Money.parse(numbers.single().value)
             val income = listOf("工资", "奖金", "收入", "到账", "收款").any { it in segment }
-            val category = if (income) "职业收入" else when {
+            val category = if (income) {
+                if (listOf("工资", "奖金").any { it in segment }) "职业收入" else "其他收入"
+            } else when {
                 listOf("饭", "菜", "餐", "早餐", "水果", "奶茶", "咖啡").any { it in segment } -> "食品酒水"
                 listOf("车", "地铁", "公交", "充电", "加油").any { it in segment } -> "行车交通"
                 listOf("药", "医院", "看病").any { it in segment } -> "医疗保健"
