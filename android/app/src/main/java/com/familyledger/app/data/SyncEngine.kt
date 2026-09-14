@@ -67,7 +67,7 @@ internal class SyncEngine(
                         // Both devices agree that the row is deleted. Converge on the
                         // newer tombstone instead of asking the user to choose between
                         // two records that are no longer active.
-                        if (remoteTombstoneWins(entry, row.entry, ownHash, remoteHash)) {
+                        if (remoteTombstoneWins(entry, row.entry, requireNotNull(ownHash), remoteHash)) {
                             downloads += row.entry
                             accepted[id] = SyncIndex(row.revision, remoteHash)
                         } else uploads += SyncUpload(entry, row.revision)
