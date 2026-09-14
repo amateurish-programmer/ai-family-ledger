@@ -80,6 +80,21 @@ assert.equal(result.status, 200); assert.ok(JSON.parse(result.body.result).reply
 assert.equal(providerCalls, callsBeforeRepair + 2);
 assert.ok(sent.messages[0].content.includes('工资入账'));
 assert.ok(sent.messages[2].content.includes('上一次回答未通过 JSON 格式校验')); checks++;
+const callsBeforeExplicitIncomeFallback = providerCalls;
+result = await call('chat', { ...input, text: '今天意外收入1034元', giftFields: true }, [
+  { reply: '格式错误', entries: [], query: null, extra: true },
+  { reply: '仍然错误', entries: [], query: null, extra: true },
+]);
+assert.equal(result.status, 200);
+const explicitIncome = JSON.parse(result.body.result).entries[0];
+assert.equal(explicitIncome.type, 'INCOME');
+assert.equal(explicitIncome.amount, '1034');
+assert.equal(explicitIncome.date, input.today);
+assert.equal(explicitIncome.category, '其他收入');
+assert.equal(explicitIncome.isGift, false);
+assert.equal(explicitIncome.counterparty, '');
+assert.equal(providerCalls, callsBeforeExplicitIncomeFallback + 2);
+assert.ok(sent.messages[0].content.includes('意外收入')); checks++;
 const callsBeforeUpstreamFailure = providerCalls;
 result = await call('chat', input, '__HTTP_503__');
 assert.equal(result.status, 502); assert.equal(providerCalls, callsBeforeUpstreamFailure + 1); checks++;

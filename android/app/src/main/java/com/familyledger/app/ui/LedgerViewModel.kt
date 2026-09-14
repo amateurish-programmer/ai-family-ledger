@@ -229,8 +229,13 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
             chatMessage(false, reply, drafts = result.entries)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            chatMessage(false, "发送失败：${e.message ?: "服务暂不可用"}\n内容已放回输入框，可以重试。", "上次请求失败，没有保存记录。")
-            mutableState.update { it.copy(chatInput = text) }
+            val fallback = runCatching { ChatCodec.localFallback(text, today, snapshot.localRole) }.getOrNull()
+            if (fallback != null) {
+                chatMessage(false, fallback.reply, "云端请求失败，已使用本机规则生成待确认记录。", fallback.entries)
+            } else {
+                chatMessage(false, "发送失败：${e.message ?: "服务暂不可用"}\n内容已放回输入框，可以重试。", "上次请求失败，没有保存记录。")
+                mutableState.update { it.copy(chatInput = text) }
+            }
         } finally { mutableState.update { it.copy(operationStatus = null) } }
     }
     fun saveQuickDrafts() = perform {

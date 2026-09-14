@@ -63,6 +63,15 @@ internal class SyncEngine(
                         accepted[id] = SyncIndex(row.revision, remoteHash)
                     }
                     ownHash == remoteHash -> accepted[id] = SyncIndex(row.revision, remoteHash)
+                    entry.deletedAt != null && remoteDeletedAt != null -> {
+                        // Both devices agree that the row is deleted. Converge on the
+                        // newer tombstone instead of asking the user to choose between
+                        // two records that are no longer active.
+                        if (remoteTombstoneWins(entry, row.entry, requireNotNull(ownHash), remoteHash)) {
+                            downloads += row.entry
+                            accepted[id] = SyncIndex(row.revision, remoteHash)
+                        } else uploads += SyncUpload(entry, row.revision)
+                    }
                     else -> conflicts += CloudConflict(id, entry, row.entry, row.revision)
                 }
             }
@@ -96,6 +105,16 @@ internal class SyncEngine(
             uploaded += accepted.size
         }
         return SyncResult(uploaded, downloaded, conflicts)
+    }
+
+    private fun remoteTombstoneWins(local: LedgerEntry, remote: LedgerEntry, localHash: String, remoteHash: String): Boolean {
+        val localDeleted = requireNotNull(local.deletedAt)
+        val remoteDeleted = requireNotNull(remote.deletedAt)
+        return when {
+            remoteDeleted != localDeleted -> remoteDeleted > localDeleted
+            remote.updatedAt != local.updatedAt -> remote.updatedAt > local.updatedAt
+            else -> remoteHash > localHash
+        }
     }
 
     companion object {

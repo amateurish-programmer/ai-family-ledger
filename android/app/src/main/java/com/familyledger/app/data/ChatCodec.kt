@@ -13,6 +13,14 @@ object ChatCodec {
         require(it.length in 1..20 && it.none { c -> c.isISOControl() }) { "角色须为 1 至 20 字，例如老公、老婆" }
     }
 
+    fun localFallback(text: String, today: LocalDate, localRole: String): ChatResult {
+        val who = role(localRole)
+        val entries = QuickEntryCodec.local(text, today).map { entry ->
+            entry.copy(member = who, recordedBy = who)
+        }
+        return ChatResult("云端暂时不可用，已在本机整理出待确认记录，请核对后保存。", entries, null)
+    }
+
     fun decode(text: String, localRole: String): ChatResult {
         val who = role(localRole)
         val root = JSONObject(text)

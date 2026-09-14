@@ -7,6 +7,20 @@ object CloudErrors {
     fun message(status: Int, path: String, response: String): String {
         val error = runCatching { JSONObject(response) }.getOrNull()
         val codes = listOf("error_code", "code", "error", "message").map { error?.optString(it).orEmpty() }
+        val function = path.startsWith("/functions/")
+        if (function) {
+            when (error?.optString("error")) {
+                "AI 输出格式修正失败，请重试", "AI 输出不符合提案或报告格式，请重试",
+                "未识别到明确账目，请补充金额、日期与收支类型" ->
+                    return "AI 未能生成有效记账格式；简单收支将尝试在本机整理，复杂内容请修改后重试"
+                "AI 输出未完整生成，请缩短输入后重试" ->
+                    return "AI 回复过长或未完整生成，请缩短输入后重试"
+                "上游服务暂不可用，请稍后重试", "AI 服务超时或暂不可用，请稍后重试" ->
+                    return "AI 服务暂时不可用，请稍后重试"
+                "AI 服务尚未配置", "AI 服务配置无效" ->
+                    return "AI 服务尚未正确配置，请联系管理员"
+            }
+        }
         val auth = path.startsWith("/auth/")
         if (path == "/auth/v1/recover" && listOf("msg", "message", "error_description")
                 .any { error?.optString(it)?.contains("Error sending recovery email", ignoreCase = true) == true }) {
