@@ -22,6 +22,16 @@ class CloudErrorsTest {
     @Test fun rpcErrorsStillUseKnownMessage() {
         assertTrue(CloudErrors.message(400, "/rest/v1/rpc/join_family", """{"code":"P0001","message":"invalid_or_expired_invite"}""").contains("邀请码"))
     }
+    @Test fun aiSchemaAndTransportFailuresAreActionableWithoutLeakingRawContent() {
+        val schema = CloudErrors.message(502, "/functions/v1/ledger-ai", """{"error":"AI 输出格式修正失败，请重试"}""")
+        assertTrue(schema.contains("有效记账格式"))
+        val upstream = CloudErrors.message(502, "/functions/v1/ledger-ai", """{"error":"上游服务暂不可用，请稍后重试"}""")
+        assertEquals("AI 服务暂时不可用，请稍后重试", upstream)
+        val unknown = CloudErrors.message(502, "/functions/v1/ledger-ai", """{"error":"private model output"}""")
+        assertFalse(unknown.contains("private"))
+        assertTrue(unknown.contains("HTTP 502"))
+    }
+
     @Test fun freshInstallAndSameProjectCanUseBuiltInConfiguration() {
         CloudEndpoint.requireCompatible(null, false)
         CloudEndpoint.requireCompatible(CloudEndpoint.URL, true)
