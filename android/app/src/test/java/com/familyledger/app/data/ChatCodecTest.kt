@@ -3,6 +3,7 @@ package com.familyledger.app.data
 import com.familyledger.app.domain.*
 import org.junit.Assert.*
 import org.junit.Test
+import java.time.LocalDate
 
 class ChatCodecTest {
     private fun response(member: String = "本人", amount: String = "36.80") = """{"reply":"请确认记录","query":null,"entries":[{"type":"EXPENSE","amount":"$amount","date":"2026-09-06","category":"食品酒水","subcategory":"午餐","account":"微信","member":"$member","recordedBy":"错误角色","merchant":"","project":"","note":"午饭"}]}"""
@@ -32,6 +33,19 @@ class ChatCodecTest {
         val all = ChatCodec.answer(ChatQuery("2026-09-01", "2026-10-01", "", "", ""), rows)
         assertTrue(all.contains("老婆：¥ 0.30")); assertTrue(all.contains("老公：¥ 999.99"))
     }
+    @Test fun explicitUnexpectedIncomeFallsBackLocallyForConfirmation() {
+        val result = ChatCodec.localFallback("今天意外收入1034元", LocalDate.parse("2026-09-14"), "老婆")
+        val row = result.entries.single()
+        assertEquals(EntryType.INCOME, row.type)
+        assertEquals(103400L, row.amountMinor)
+        assertEquals("2026-09-14", row.occurredOn)
+        assertEquals("其他收入", row.categoryL1)
+        assertEquals("老婆", row.member)
+        assertEquals("老婆", row.recordedBy)
+        assertNull(result.query)
+        assertTrue(result.reply.contains("待确认"))
+    }
+
     @Test fun invalidQueryDateAndRoleAreRejected() {
         assertThrows(IllegalArgumentException::class.java) { ChatCodec.decode("""{"reply":"查询","entries":[],"query":{"start":"2026-02-30","end":"2026-03-01","member":"","category":"","keyword":""}}""", "老公") }
         assertThrows(IllegalArgumentException::class.java) { ChatCodec.role(" ") }
