@@ -112,7 +112,7 @@ class ReportNavigationUiTest {
                         categoryL1 = "养娃", categoryL2 = "玩具"),
                     entry("i1", "2026-09-05", 800000).copy(isGift = false, categoryL1 = "工资"),
                     entry("i2", "2025-01-01", 999999).copy(isGift = false, categoryL1 = "工资")),
-                    YearMonth.of(2026, 9), {}, false, false, null, null, {}, {}, {})
+                    YearMonth.of(2026, 9), {}, false, false, null, null, { _, _ -> }, {}, {})
             }
         }
         compose.onNodeWithTag("report_section_categories").performClick()
