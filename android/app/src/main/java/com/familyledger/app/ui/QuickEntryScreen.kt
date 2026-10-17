@@ -80,35 +80,38 @@ internal fun chatSendEnabled(state: LedgerState): Boolean =
                 }
             }) {
             // The reverse list starts with the latest content; visual draft order is unchanged.
-            if (state.quickDrafts.isNotEmpty()) item(key = "chat:confirm") {
+            if (state.quickDrafts.size > 1) item(key = "chat:confirm") {
                 Button(onClick = model::saveQuickDrafts, enabled = !state.busy, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
                     Icon(Icons.Outlined.Check, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("确认保存 ${state.quickDrafts.size} 笔")
                 }
             }
             items(state.quickDrafts.asReversed(), key = { "chat:draft:${it.id}" }) { e ->
-                LedgerPanel(Modifier.fillMaxWidth().animateContentSize(), accent = true) {
-                        Text("待确认 · 收支小票", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                LedgerPanel(Modifier.fillMaxWidth().animateContentSize(), accent = true, contentPadding = 14.dp, contentSpacing = 6.dp) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("待确认 · 尚未入账", Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            Text(e.occurredOn, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             IconBadge(if (e.type == EntryType.INCOME) Icons.Outlined.SouthWest else Icons.Outlined.NorthEast, sage = e.type == EntryType.INCOME)
                             Column(Modifier.weight(1f)) {
-                                Text(e.type.label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("${e.type.label} · ${e.categoryL2.ifBlank { e.categoryL1 }}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text("¥ ${Money.format(e.amountMinor)}", style = MaterialTheme.typography.headlineSmall,
                                     fontFamily = style.moneyFontFamily,
                                     color = if (e.type == EntryType.INCOME) LedgerSage else MaterialTheme.colorScheme.onSurface)
                             }
                         }
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .55f))
-                        Text("${e.occurredOn} · ${e.categoryL1}${if (e.categoryL2.isNotBlank()) " / ${e.categoryL2}" else ""}", style = MaterialTheme.typography.bodyMedium)
-                        Text("${e.member} · ${e.account} · 记账人 ${e.recordedBy}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (e.isGift) Text("人情往来 · ${e.counterparty.ifBlank { "待补全对象" }}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
-                        if (e.note.isNotBlank()) Text(e.note, style = MaterialTheme.typography.bodyMedium)
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                            TextButton(onClick = { model.removeQuickDraft(e.id) }, enabled = !state.busy) { Text("移除", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                            FilledTonalButton(onClick = { onEditingChange(e.id) }, enabled = !state.busy) { Text("修改记录") }
+                        Text("归属 ${e.member} · ${e.account}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (e.isGift) Text("人情往来 · ${e.counterparty.ifBlank { "待补全对象" }}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                        if (e.note.isNotBlank()) Text(e.note, style = MaterialTheme.typography.bodySmall)
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            TextButton(onClick = { model.removeQuickDraft(e.id) }, enabled = !state.busy, contentPadding = PaddingValues(4.dp)) { Text("移除", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            TextButton(onClick = { onEditingChange(e.id) }, enabled = !state.busy, contentPadding = PaddingValues(4.dp)) { Text("修改") }
+                            if (state.quickDrafts.size == 1) Button(onClick = model::saveQuickDrafts, enabled = !state.busy,
+                                modifier = Modifier.weight(1f).heightIn(min = 48.dp), contentPadding = PaddingValues(horizontal = 8.dp)) { Text("确认入账") }
                         }
                 }
             }
-            if (state.quickDrafts.isNotEmpty()) item(key = "chat:draft-heading") {
+            if (state.quickDrafts.size > 1) item(key = "chat:draft-heading") {
                 SectionHeading("请确认这 ${state.quickDrafts.size} 笔", "尚未入账 · 可以修改金额、分类和成员")
             }
             if (state.busy && !state.syncing) item(key = "chat:processing") {

@@ -98,11 +98,14 @@ class ThemeScreenshotsTest {
             compose.onAllNodesWithText("家庭成员名称完整显示").onFirst().assertIsDisplayed()
             compose.onAllNodesWithText("¥ 99999999.99").onFirst().assertIsDisplayed()
             compose.onNodeWithTag("report_section_members").performClick()
+            compose.waitForIdle()
+            compose.onNodeWithTag("report_list").performScrollToNode(hasText("家庭成员名称完整显示"))
             screenshot("theme-${choice.storageId}-narrow-large-report.png")
         }
     }
 
     private fun screenshot(name: String) {
+        compose.waitForIdle()
         InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("screencap -p /data/local/tmp/ledger-screens/$name")
             .let { ParcelFileDescriptor.AutoCloseInputStream(it).use { stream -> stream.readBytes() } }
     }

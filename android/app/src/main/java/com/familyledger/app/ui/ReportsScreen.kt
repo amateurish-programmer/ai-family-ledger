@@ -19,6 +19,7 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -92,7 +93,7 @@ internal fun ReportContent(entries: List<LedgerEntry>, month: YearMonth, onMonth
                             chooseDate(month.atDay(rememberedDay))
                         }
                         periodName = choice.name
-                    }, label = { Text(choice.label) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp))
+                    }, label = { Text(choice.label, maxLines = 1, style = MaterialTheme.typography.labelMedium) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp))
                 }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -217,16 +218,15 @@ internal fun ReportContent(entries: List<LedgerEntry>, month: YearMonth, onMonth
 @Composable
 private fun CompactReportSummary(summary: Summary) {
     val style = LocalLedgerStyle.current
+    val largeType = LocalDensity.current.fontScale >= 1.3f
     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            listOf(true, false).forEach { income ->
-                val color = if (income) LedgerSage else MaterialTheme.colorScheme.primary
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(if (income) "收入" else "支出", style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("¥ ${Money.format(if (income) summary.income else summary.expense)}", style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.SemiBold, fontFamily = style.moneyFontFamily, color = color)
-                }
+        if (largeType) {
+            ReportAmount("收入", summary.income, LedgerSage)
+            ReportAmount("支出", summary.expense, MaterialTheme.colorScheme.primary)
+        } else {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                ReportAmount("收入", summary.income, LedgerSage, Modifier.weight(1f))
+                ReportAmount("支出", summary.expense, MaterialTheme.colorScheme.primary, Modifier.weight(1f))
             }
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -235,6 +235,14 @@ private fun CompactReportSummary(summary: Summary) {
             Text("¥ ${Money.format(summary.balance)}", Modifier.weight(1f), textAlign = TextAlign.End,
                 style = MaterialTheme.typography.titleSmall, fontFamily = style.moneyFontFamily)
         }
+    }
+}
+
+@Composable private fun ReportAmount(label: String, amount: Long, color: androidx.compose.ui.graphics.Color, modifier: Modifier = Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("¥ ${Money.format(amount)}", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold,
+            fontFamily = LocalLedgerStyle.current.moneyFontFamily, color = color)
     }
 }
 
