@@ -94,6 +94,12 @@ class ThemeScreenshotsTest {
         screenshot("theme-large-type-ledger.png")
         compose.runOnIdle { page = 0 }
         compose.onNodeWithContentDescription("发送").assertIsDisplayed()
+        compose.onNodeWithTag("chat_timeline").performScrollToIndex(0)
+        compose.waitForIdle()
+        val chatListBounds = compose.onNodeWithTag("chat_timeline").fetchSemanticsNode().boundsInRoot
+        val chatHeaderBounds = compose.onNodeWithTag("chat_header").fetchSemanticsNode().boundsInRoot
+        android.util.Log.i("AndroidRuntime", "theme-layout chat: list=$chatListBounds; header=$chatHeaderBounds")
+        org.junit.Assert.assertTrue("Chat content must stay below the fixed header: list=$chatListBounds, header=$chatHeaderBounds", chatListBounds.top >= chatHeaderBounds.bottom)
         screenshot("theme-large-type-chat.png")
         AppTheme.entries.forEach { choice ->
             compose.runOnIdle { theme = choice; page = 4; narrow = true; largeType = true }

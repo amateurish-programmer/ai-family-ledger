@@ -2,6 +2,7 @@ package com.familyledger.app.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -25,6 +26,7 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import com.familyledger.app.domain.EntryType
 import com.familyledger.app.domain.Money
 import com.familyledger.app.data.IdentityProfile
@@ -49,20 +51,23 @@ internal fun chatSendEnabled(state: LedgerState): Boolean =
     }
     val style = LocalLedgerStyle.current
     Column(Modifier.fillMaxSize().imePadding()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = style.pagePadding, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ProfileBadge(IdentityProfile.familyIcons.first { it.id == (state.cloudStatus?.familyIcon ?: "home") })
-            Column(Modifier.weight(1f)) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("家庭账本", style = MaterialTheme.typography.titleLarge, modifier = Modifier.align(Alignment.CenterVertically))
-                    if (state.syncing) Box(Modifier.align(Alignment.CenterVertically)) { SyncStatus(true) }
+        // The opaque fixed header paints above scrolled chat content, like the report controls.
+        Column(Modifier.fillMaxWidth().zIndex(1f).background(MaterialTheme.colorScheme.background).testTag("chat_header")) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = style.pagePadding, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                ProfileBadge(IdentityProfile.familyIcons.first { it.id == (state.cloudStatus?.familyIcon ?: "home") })
+                Column(Modifier.weight(1f)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("家庭账本", style = MaterialTheme.typography.titleLarge, modifier = Modifier.align(Alignment.CenterVertically))
+                        if (state.syncing) Box(Modifier.align(Alignment.CenterVertically)) { SyncStatus(true) }
+                    }
+                    Text("${state.localRole} · ${state.cloudStatus?.familyName ?: "本机账本"}", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Text("${state.localRole} · ${state.cloudStatus?.familyName ?: "本机账本"}", style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("账本助手", style = MaterialTheme.typography.labelMedium, color = LedgerSage)
             }
-            Text("账本助手", style = MaterialTheme.typography.labelMedium, color = LedgerSage)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .55f))
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .55f))
         ChatTimeline(state.chatMessages, conversationKey, state.localRole, state.localAvatar,
             modifier = Modifier.weight(1f).fillMaxWidth(), emptyContent = {
                 Column(Modifier.fillMaxWidth().padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
