@@ -31,7 +31,18 @@ V0.7 已更新 `ledger-ai`，增加 `chat` 操作并兼容旧版 `parse`/`report
 4. 部署 `supabase/functions/ledger-ai`。`supabase/config.toml` 对该函数配置 `verify_jwt=false`，函数内部仍强制向 Auth 服务验证用户，并检查家庭成员关系，不能删除此校验。无需把 service_role 配置到手机。
 5. 维护者在 `CloudEndpoint.kt` 配置项目根 URL 与公开 key 后构建 APK；V0.6 已内置当前项目，用户界面不提供配置输入。只允许 `https://项目标识.supabase.co`，暂不支持自定义域、localhost、自托管、显式端口、路径或重定向。首次登录后创建家庭，家庭创建者生成邀请码，其他账号登录后输入邀请码加入。
 
-官方配置参考：[Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security)、[Edge Function Auth](https://supabase.com/docs/guides/functions/auth)、[DeepSeek 思考模式](https://api-docs.deepseek.com/zh-cn/guides/thinking_mode/)。函数仅对官方 `api.deepseek.com` 设置 `thinking.type=disabled`，继续要求 JSON object 输出；其他兼容供应商不附加该参数。当前部署状态以上节为准。
+官方配置参考：[Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security)、[Edge Function Auth](https://supabase.com/docs/guides/functions/auth)、[DeepSeek 思考模式](https://api-docs.deepseek.com/zh-cn/guides/thinking_mode/)。V1.8 仅对官方 `api.deepseek.com` 发送 thinking 参数：记账与查询规划关闭思考，新版分析和报告默认开启；其他兼容供应商不附加该参数，仍要求 JSON object 输出。
+
+V1.8 分析配置均在服务端设置，手机无需填写，已有 OPENAI_MODEL/API_KEY/BASE_URL 保留：
+
+| 可选 Secret | 默认与用途 |
+|---|---|
+| OPENAI_ANALYSIS_MODEL | 未设置时继承 OPENAI_MODEL，仅新版 analyze 与 report 使用 |
+| OPENAI_ANALYSIS_THINKING | 默认启用；仅 DeepSeek 的分析/报告发送 thinking.type=enabled |
+| OPENAI_ANALYSIS_MAX_TOKENS | 默认 8192，允许 2048 至 16384，包含供应商思考预算 |
+| OPENAI_ANALYSIS_TIMEOUT_MS | 默认及上限 45000 毫秒，初次调用和一次协议修正共用预算 |
+
+新 App 发送 analysisV2 能力标记，最多四组查询；原客户端仍使用原三字段 chat 协议。账本事实由客户端整数分计算，分析只返回定性说明与 factIds；服务端把选中事实的原始标签和值附到回复，避免金额与收入/支出标签错配。history 最多八条、每条一千五百字；memory 最多八项、每项五百字，均作为不可信的历史数据，不用于自动生成交易。错误日志只记录固定原因码，不保存提示词、账本或模型原文。
 
 ## 数据、身份与权限
 

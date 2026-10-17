@@ -16,6 +16,7 @@ import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -35,6 +36,7 @@ import java.time.YearMonth
     var draftEditorKey by rememberSaveable { mutableStateOf<String?>(null) }
     var focusUpdates by rememberSaveable { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
+    val chatScreenState = rememberSaveableStateHolder()
     val month = YearMonth.parse(monthText)
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle, model) {
@@ -112,7 +114,10 @@ import java.time.YearMonth
         Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
             if (state.busy && !state.syncing) LinearProgressIndicator(Modifier.fillMaxWidth())
             when (tab) {
-                0 -> QuickEntryScreen(model, state, snackbar, draftEditorKey, onEditingChange = { draftEditorKey = it })
+                0 -> chatScreenState.SaveableStateProvider("chat:${state.conversationKey}") {
+                    QuickEntryScreen(model, state, snackbar, draftEditorKey, onEditingChange = { draftEditorKey = it },
+                        conversationKey = state.conversationKey)
+                }
                 1 -> LedgerScreen(state, month, { monthText = it.toString() }, { editorKey = it.id }, model::delete, model::syncCloud)
                 2 -> ReportsScreen(state.entries, month, { monthText = it.toString() }, model, state, onOrganizeGifts = model::openGiftHistory)
                 3 -> SettingsScreen(model, state, focusUpdates, onUpdatesFocused = { focusUpdates = false })

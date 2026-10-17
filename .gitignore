@@ -18,6 +18,7 @@ local.properties
 *.iml
 .gradle/
 **/.gradle/
+**/.kotlin/
 **/build/
 .tools/
 supabase/.temp/

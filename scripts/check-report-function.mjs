@@ -38,7 +38,8 @@ for (const text of [
 ]) {
   assert.equal(sandbox.reportNumbersSupported(text, input), true, text); count++;
 }
-for (const text of ['支出占80%。', '本期结余增加了3000元。', '支出为1.2万元。', '2025年8月的收支。', '12月的支出。']) {
+for (const text of ['支出占80%。', '本期结余增加了3000元。', '支出为1.2万元。', '2025年8月的收支。', '12月的支出。',
+  '建议储蓄三千元。', '收入一万元。', '共十二笔。', '本期支出为10000元。', '本期收入为12000元。']) {
   assert.equal(sandbox.reportNumbersSupported(text, input), false, text); count++;
 }
 for (const [generated, fallback] of [
@@ -57,7 +58,12 @@ for (const [generated, fallback] of [
   if (fallback) { assert.ok(body.result.includes('支出：¥ 12000.00')); assert.ok(!body.result.includes('3000')); }
   count++;
 }
-assert.ok(diagnostics.every(line => line === '{"event":"ai_report_fallback","reason":"output_validation"}'));
+assert.ok(diagnostics.length > 0);
+assert.ok(diagnostics.every(line => {
+  const event = JSON.parse(line);
+  return ['ai_output_repair', 'ai_output_fallback'].includes(event.event) && event.operation === 'report' &&
+    ['json', 'financial'].includes(event.reason) && Object.keys(event).length === 3;
+}));
 count++;
 const yearly = { ...input, period: '2026 年', trend: Array.from({ length: 12 }, (_, i) => ({
   period: `2026-${String(i + 1).padStart(2, '0')}`, income: '10000.00', expense: '12000.00',

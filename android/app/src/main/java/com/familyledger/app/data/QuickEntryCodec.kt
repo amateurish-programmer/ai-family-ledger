@@ -11,6 +11,10 @@ object QuickEntryCodec {
         val segments = text.split(Regex("[，,；;。\n]+" )).map { it.trim() }.filter { it.isNotEmpty() }
         require(segments.size in 1..20) { "一次最多整理 20 笔" }
         return segments.map { segment ->
+            // Only explicit, simple first-person statements can be parsed without a model.
+            // Anchoring prevents a third person's income, gifts, plans or negations being reassigned.
+            val simple = Regex("^(?:(?:今天|昨天|前天|[0-9]{4}-[0-9]{2}-[0-9]{2}))?(?:我|本人)?(?:(?:用)?(?:支付宝|微信|现金|银行卡)(?:支付|付)?)?(?:(?:意外)?收入|(?:收到)?工资(?:到账)?|(?:收到)?奖金|收款|午饭|晚饭|早饭|早餐|午餐|晚餐|买菜|水果|奶茶|咖啡|地铁|公交|打车|加油|充电|买药|看病|房租|水费|电费|燃气)(?:花了|花费|支出|付款|支付|消费|花)?[0-9]+(?:\\.[0-9]{1,2})?(?:元|块钱|块)?$")
+            require(simple.matches(segment.replace(Regex("\\s+"), ""))) { "离线只能整理明确的本人简单收支；涉及他人、礼金、计划或不确定语义，请手工记账或待云端恢复后重试" }
             require(!Regex("上周|上月|去年|下周|明天|后天").containsMatchIn(segment)) { "简单整理暂不支持该日期说法，请使用具体日期或云端 AI" }
             val explicitDate = Regex("[0-9]{4}-[0-9]{2}-[0-9]{2}").find(segment)?.value
             val date = explicitDate?.let(::validateDate) ?: when {
@@ -18,6 +22,7 @@ object QuickEntryCodec {
                 "昨天" in segment -> today.minusDays(1).toString()
                 else -> today.toString()
             }
+            require(LocalDate.parse(date) <= today) { "未来计划不能作为已发生交易" }
             val withoutDate = if (explicitDate != null) segment.replace(explicitDate, "") else segment
             require(!Regex("-[0-9]|退款|转账|余额|借入|借出").containsMatchIn(withoutDate)) { "该句金额方向不明确，请手工记账或用云端 AI 整理后核对" }
             val numbers = Regex("[0-9]+(?:\\.[0-9]+)?").findAll(withoutDate).toList()
@@ -34,7 +39,7 @@ object QuickEntryCodec {
                 listOf("房租", "水费", "电费", "燃气").any { it in segment } -> "居家物业"
                 else -> "其他支出"
             }
-            val account = listOf("支付宝", "微信", "现金", "银行卡").firstOrNull { it in segment } ?: "银行卡"
+            val account = listOf("支付宝", "微信", "现金", "银行卡").firstOrNull { it in segment } ?: "未指定"
             validateEntry(LedgerEntry(UUID.randomUUID().toString(), if (income) EntryType.INCOME else EntryType.EXPENSE,
                 date, money, category, account = account, member = "本人", recordedBy = "本人", note = segment))
         }

@@ -41,7 +41,9 @@ const row = { type:'EXPENSE',amount:'100.00',date:'2026-09-07',category:'人情'
 let r=await call('chat', {...input,giftFields:true}, {reply:'提案',entries:[{...row,isGift:true,counterparty:'小王'}],query:null});
 assert.equal(r.status,200); assert.equal(JSON.parse(r.body.result).entries[0].counterparty,'小王');
 r=await call('chat', input, {reply:'提案',entries:[row],query:null}); assert.equal(r.status,200); assert.equal('isGift' in JSON.parse(r.body.result).entries[0],false);
-r=await call('chat', input, {reply:'提案',entries:[{...row,isGift:true,counterparty:'小王'}],query:null}); assert.equal(r.status,502);
+r=await call('chat', input, {reply:'提案',entries:[{...row,isGift:true,counterparty:'小王'}],query:null});
+assert.equal(r.status,200); assert.deepEqual(JSON.parse(r.body.result).entries,[]);
+assert.match(JSON.parse(r.body.result).reply,/明确|补充/);
 const items=[{id:'00000000-0000-0000-0000-000000000001',merchant:'',note:'小王结婚随礼'}];
 r=await call('gift_history',{items},{items:[{id:items[0].id,isGift:true,counterparty:'小王'}]}); assert.equal(r.status,200);
 assert.deepEqual(Object.keys(JSON.parse(sent.messages[1].content).items[0]).sort(),['id','merchant','note']);

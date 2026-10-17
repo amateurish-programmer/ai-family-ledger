@@ -20,6 +20,7 @@ data class LedgerState(val entries: List<LedgerEntry> = emptyList(), val loading
     val selectedGiftCategories: Set<GiftCategory> = emptySet(), val giftProposals: List<GiftHistoryProposal>? = null,
     val giftAnalyzing: Boolean = false,
     val chatMessages: List<ChatMessage> = emptyList(), val chatInput: String = "", val localRole: String = "本人",
+    val conversationKey: String = "loading",
     val cloudStatus: CloudStatus? = null, val cloudConflicts: List<CloudConflict> = emptyList(), val inviteCode: String? = null,
     val reportText: String? = null, val reportKey: String? = null, val cloudOpen: Boolean = false,
     val autoSync: Boolean = false, val operationStatus: String? = null, val localAvatar: String = "person", val documentPickerOpen: Boolean = false, val spreadsheetExportReady: Boolean = false,
@@ -76,11 +77,11 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         val owner = cloud?.conversationOwner() ?: "local"
         if (owner == chatOwner) return
         // Do not display one account's messages while another account's history is loading.
-        mutableState.update { it.copy(chatMessages = emptyList(), quickDrafts = emptyList(), chatInput = "") }
+        mutableState.update { it.copy(chatMessages = emptyList(), quickDrafts = emptyList(), chatInput = "", conversationKey = "loading:$owner") }
         val messages = repository.chatMessages(owner)
         val drafts = repository.chatDrafts(owner)
         chatOwner = owner
-        mutableState.update { it.copy(chatMessages = messages, quickDrafts = drafts,
+        mutableState.update { it.copy(chatMessages = messages, quickDrafts = drafts, conversationKey = owner,
             chatInput = messages.lastOrNull()?.takeIf { m -> m.user }?.text?.take(2000) ?: "") }
     }
 
@@ -195,38 +196,18 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         require(text.isNotBlank() && text.length <= 2000) { "内容须为 1 至 2000 字" }
         require(snapshot.quickDrafts.isEmpty()) { "请先确认或移除待保存记录" }
         require(snapshot.cloudStatus?.email != null && snapshot.cloudStatus.familyId != null) { "请先在设置中登录并创建或加入家庭" }
-        val history = org.json.JSONArray().apply {
-            snapshot.chatMessages.takeLast(8).forEach { put(org.json.JSONObject().put("role", if (it.user) "user" else "assistant").put("text", it.context.take(750))) }
-        }
         val rows = repository.allEntries()
         val today = java.time.LocalDate.now()
         val lastSync = snapshot.cloudStatus.lastSync.takeIf { it > 0 }?.let {
             java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneId.systemDefault()).toLocalDateTime().toString()
         } ?: "尚未成功同步"
-        val finance = withContext(Dispatchers.Default) { FinanceContext.build(rows, today, lastSync) }
-        val input = org.json.JSONObject().put("text", text).put("today", java.time.LocalDate.now().toString())
-            .put("role", snapshot.localRole).put("history", history)
-            .put("finance", finance).put("giftFields", true)
-            .put("members", org.json.JSONArray(snapshot.entries.map { it.member }.distinct().take(20)))
-            .put("categories", org.json.JSONArray(snapshot.entries.flatMap { listOf(it.categoryL1, it.categoryL2) }.filter { it.isNotBlank() }.distinct().take(20)))
         chatMessage(true, text)
         mutableState.update { it.copy(chatInput = "", operationStatus = "正在分析家庭账本…") }
         try {
-            val result = ChatCodec.decode(requireCloud().ai("chat", input), snapshot.localRole)
-            val answer = result.query?.let { query ->
-                mutableState.update { it.copy(operationStatus = "正在解读查询结果…") }
-                val selected = withContext(Dispatchers.Default) { FinanceContext.build(rows, today, lastSync, query) }
-                try {
-                    requireCloud().ai("analyze", org.json.JSONObject().put("text", text).put("history", history).put("finance", selected))
-                } catch (e: Exception) {
-                    if (e is CancellationException) throw e
-                    "AI 解读暂未完成：${e.message ?: "服务暂不可用"}。以下为程序计算的查询结果：\n\n" +
-                        withContext(Dispatchers.Default) { ChatCodec.answer(query, rows) }
-                }
-            }
-            // Preserve the actual answer for follow-up questions, not only the query filter.
-            val reply = answer ?: result.reply
-            chatMessage(false, reply, drafts = result.entries)
+            val result = FinanceConversation.respond(text, today, snapshot.localRole, snapshot.chatMessages, rows, lastSync,
+                onQuery = { mutableState.update { it.copy(operationStatus = "正在解读查询结果…") } },
+                ai = { operation, input -> requireCloud().ai(operation, input) })
+            chatMessage(false, result.reply, ConversationMemory.context(result.reply, result.queries), drafts = result.entries)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             val fallback = runCatching { ChatCodec.localFallback(text, today, snapshot.localRole) }.getOrNull()

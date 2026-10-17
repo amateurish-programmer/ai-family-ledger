@@ -4,8 +4,9 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
@@ -13,9 +14,11 @@ import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -23,6 +26,10 @@ import androidx.compose.ui.unit.dp
 import com.familyledger.app.domain.EntryType
 import com.familyledger.app.domain.Money
 import com.familyledger.app.data.IdentityProfile
+import com.familyledger.app.data.ChatMessage
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 
 internal fun chatInputEnabled(state: LedgerState): Boolean =
     !state.loading && !state.chatSending && state.quickDrafts.isEmpty() && (!state.busy || state.syncing)
@@ -32,16 +39,11 @@ internal fun chatSendEnabled(state: LedgerState): Boolean =
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable fun QuickEntryScreen(model: LedgerViewModel, state: LedgerState, snackbar: SnackbarHostState,
-    editing: String?, onEditingChange: (String?) -> Unit) {
-    val list = rememberLazyListState()
+    editing: String?, onEditingChange: (String?) -> Unit, conversationKey: String) {
     val draft = state.quickDrafts.firstOrNull { it.id == editing }
     if (draft != null) {
         key(draft.id) { EntryEditor(draft, state.busy, snackbar, onClose = { onEditingChange(null) }, onSave = { model.updateQuickDraft(it); onEditingChange(null) }) }
         return
-    }
-    LaunchedEffect(state.chatMessages.size, state.quickDrafts.size, state.busy) {
-        val count = list.layoutInfo.totalItemsCount
-        if (count > 0) list.animateScrollToItem(count - 1)
     }
     Column(Modifier.fillMaxSize().imePadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically,
@@ -58,9 +60,8 @@ internal fun chatSendEnabled(state: LedgerState): Boolean =
             Text("账本助手", style = MaterialTheme.typography.labelMedium, color = LedgerSage)
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .55f))
-        LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = list,
-            contentPadding = PaddingValues(horizontal = 22.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-            if (state.chatMessages.isEmpty()) item {
+        ChatTimeline(state.chatMessages, conversationKey, state.localRole, state.localAvatar,
+            modifier = Modifier.weight(1f).fillMaxWidth(), emptyContent = {
                 Column(Modifier.fillMaxWidth().padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     FamilyIllustration(Modifier.align(Alignment.CenterHorizontally))
                     Text("收支随手记，\n家里的账一起理。", style = MaterialTheme.typography.headlineMedium)
@@ -74,30 +75,14 @@ internal fun chatSendEnabled(state: LedgerState): Boolean =
                             modifier = Modifier.heightIn(min = 48.dp))
                     }
                 }
-            }
-            items(state.chatMessages, key = { it.id }) { message ->
-                Column(Modifier.fillMaxWidth(), horizontalAlignment = if (message.user) Alignment.End else Alignment.Start,
-                    verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(if (message.user) "${IdentityProfile.avatars.first { it.id == state.localAvatar }.symbol} ${state.localRole}" else "账本助手", style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Surface(color = if (message.user) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLowest,
-                        shape = if (message.user) RoundedCornerShape(20.dp, 5.dp, 20.dp, 20.dp) else RoundedCornerShape(5.dp, 20.dp, 20.dp, 20.dp),
-                        modifier = Modifier.widthIn(max = 600.dp).fillMaxWidth(if (message.user) .9f else 1f).animateContentSize()) {
-                        SelectionContainer { Text(message.text, Modifier.padding(17.dp), style = MaterialTheme.typography.bodyLarge) }
-                    }
+            }) {
+            // The reverse list starts with the latest content; visual draft order is unchanged.
+            if (state.quickDrafts.isNotEmpty()) item(key = "chat:confirm") {
+                Button(onClick = model::saveQuickDrafts, enabled = !state.busy, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+                    Icon(Icons.Outlined.Check, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("确认保存 ${state.quickDrafts.size} 笔")
                 }
             }
-            if (state.busy && !state.syncing) item {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                    Text(state.operationStatus ?: "正在处理…", modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            if (state.quickDrafts.isNotEmpty()) item {
-                SectionHeading("请确认这 ${state.quickDrafts.size} 笔", "尚未入账 · 可以修改金额、分类和成员")
-            }
-            items(state.quickDrafts, key = { it.id }) { e ->
+            items(state.quickDrafts.asReversed(), key = { "chat:draft:${it.id}" }) { e ->
                 Card(Modifier.fillMaxWidth().animateContentSize(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
                     border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -121,9 +106,14 @@ internal fun chatSendEnabled(state: LedgerState): Boolean =
                     }
                 }
             }
-            if (state.quickDrafts.isNotEmpty()) item {
-                Button(onClick = model::saveQuickDrafts, enabled = !state.busy, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
-                    Icon(Icons.Outlined.Check, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("确认保存 ${state.quickDrafts.size} 笔")
+            if (state.quickDrafts.isNotEmpty()) item(key = "chat:draft-heading") {
+                SectionHeading("请确认这 ${state.quickDrafts.size} 笔", "尚未入账 · 可以修改金额、分类和成员")
+            }
+            if (state.busy && !state.syncing) item(key = "chat:processing") {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Text(state.operationStatus ?: "正在处理…", modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -150,6 +140,88 @@ internal fun chatSendEnabled(state: LedgerState): Boolean =
                 Text(if (state.quickDrafts.isNotEmpty()) "先确认或移除上方记录，再继续记账。" else "AI 处理本轮文字与收支汇总；分析基于本机账本。",
                     Modifier.padding(top = 8.dp, start = 6.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+        }
+    }
+}
+
+/** [latestContent] is ordered from the bottom upwards, like the reversed messages. */
+@Composable internal fun ChatTimeline(
+    messages: List<ChatMessage>, conversationKey: String, localRole: String, localAvatar: String,
+    modifier: Modifier = Modifier,
+    listState: LazyListState = rememberSaveable(conversationKey, saver = LazyListState.Saver) { LazyListState() },
+    emptyContent: @Composable () -> Unit = {},
+    latestContent: LazyListScope.() -> Unit = {}
+) {
+    val messageIds = remember(messages) { messages.map { it.id } }
+    var firstLoadedId by rememberSaveable(conversationKey) {
+        mutableStateOf(messageIds.getOrNull(chatWindowStart(messageIds, null)))
+    }
+    val start = remember(messageIds, firstLoadedId) { chatWindowStart(messageIds, firstLoadedId) }
+    val visibleMessages = remember(messages, start) { messages.subList(start, messages.size).asReversed() }
+    val latest = messages.lastOrNull()
+    var previousLatestId by rememberSaveable(conversationKey) { mutableStateOf(latest?.id) }
+    var savedAnchorKey by rememberSaveable(conversationKey) { mutableStateOf<String?>(null) }
+    var savedAnchorOffset by rememberSaveable(conversationKey) { mutableIntStateOf(0) }
+    val restoredAnchor = remember(conversationKey) { savedAnchorKey to savedAnchorOffset }
+    var positionRestored by remember(conversationKey) { mutableStateOf(false) }
+    val nearLatestOffset = with(LocalDensity.current) { 96.dp.roundToPx() }
+    // Sample before this message changes the measured indices. Busy/status changes never scroll.
+    val wasNearLatest = remember(latest?.id) {
+        listState.firstVisibleItemIndex <= 1 && listState.firstVisibleItemScrollOffset <= nearLatestOffset
+    }
+    LaunchedEffect(messageIds, firstLoadedId) {
+        if (messageIds.isNotEmpty() && firstLoadedId !in messageIds) firstLoadedId = messageIds[start]
+    }
+    LaunchedEffect(latest?.id) {
+        val follow = shouldFollowChatMessage(previousLatestId, latest?.id, latest?.user == true, wasNearLatest)
+        if (!positionRestored && messages.isNotEmpty()) {
+            // LazyListState saves an index. Save a message key too, because replies can arrive
+            // while this tab is absent and shift every existing message's reversed index.
+            if (!follow && restoredAnchor.first != null) {
+                withFrameNanos { }
+                val messageIndex = visibleMessages.indexOfFirst { "chat:message:${it.id}" == restoredAnchor.first }
+                val latestItemCount = (listState.layoutInfo.totalItemsCount - visibleMessages.size - 1).coerceAtLeast(0)
+                if (messageIndex >= 0) listState.scrollToItem(messageIndex + latestItemCount, restoredAnchor.second)
+            }
+            positionRestored = true
+        }
+        if (follow) {
+            listState.scrollToItem(0)
+        }
+        previousLatestId = latest?.id
+    }
+    LaunchedEffect(listState, conversationKey) {
+        snapshotFlow { positionRestored }.first { it }
+        snapshotFlow {
+            listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == listState.firstVisibleItemIndex }
+                ?.let { it.key.toString() to listState.firstVisibleItemScrollOffset }
+        }.filterNotNull().collect { (key, offset) ->
+            savedAnchorKey = key
+            savedAnchorOffset = offset
+        }
+    }
+    LazyColumn(modifier.testTag("chat_timeline"), state = listState, reverseLayout = messages.isNotEmpty(),
+        contentPadding = PaddingValues(horizontal = 22.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        latestContent()
+        if (messages.isEmpty()) item(key = "chat:empty") { emptyContent() }
+        items(visibleMessages, key = { "chat:message:${it.id}" }) { message ->
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = if (message.user) Alignment.End else Alignment.Start,
+                verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(if (message.user) "${IdentityProfile.avatars.first { it.id == localAvatar }.symbol} $localRole" else "账本助手",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Surface(color = if (message.user) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLowest,
+                    shape = if (message.user) RoundedCornerShape(20.dp, 5.dp, 20.dp, 20.dp) else RoundedCornerShape(5.dp, 20.dp, 20.dp, 20.dp),
+                    modifier = Modifier.widthIn(max = 600.dp).fillMaxWidth(if (message.user) .9f else 1f).animateContentSize()) {
+                    SelectionContainer { Text(message.text, Modifier.padding(17.dp), style = MaterialTheme.typography.bodyLarge) }
+                }
+            }
+        }
+        if (messages.isNotEmpty()) item(key = "chat:history") {
+            if (start > 0) TextButton(onClick = { firstLoadedId = earlierChatWindowStart(messageIds, firstLoadedId) },
+                modifier = Modifier.fillMaxWidth()) { Text("继续加载（还有 $start 条）") }
+            else Text("已显示全部记录", modifier = Modifier.fillMaxWidth(),
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         }
     }
 }

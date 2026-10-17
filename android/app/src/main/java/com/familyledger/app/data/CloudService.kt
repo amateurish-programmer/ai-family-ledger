@@ -407,11 +407,13 @@ class CloudService(context: Context) {
         require(path.startsWith("/") && !path.startsWith("//"))
         syncMetrics?.takeIf { it.version == version }?.let { it.requests++ }
         val connection = URI(base + path).toURL().openConnection() as HttpURLConnection
-        val deadline = System.nanoTime() + 90_000_000_000L
+        val aiRequest = path.startsWith("/functions/")
+        val deadline = System.nanoTime() + if (aiRequest) 120_000_000_000L else 90_000_000_000L
         try {
             connection.instanceFollowRedirects = false
             connection.connectTimeout = 15000
-            connection.readTimeout = if (path.startsWith("/functions/")) 60000 else 20000
+            // Analysis may use the server's bounded thinking budget after Auth and quota checks.
+            connection.readTimeout = if (aiRequest) 110000 else 20000
             connection.requestMethod = method
             connection.setRequestProperty("apikey", pair.second)
             connection.setRequestProperty("Accept", "application/json")
