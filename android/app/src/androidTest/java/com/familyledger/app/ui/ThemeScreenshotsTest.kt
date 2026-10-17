@@ -113,11 +113,11 @@ class ThemeScreenshotsTest {
         compose.waitForIdle()
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
         if (name.contains("narrow-large-report")) {
-            val capture = java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "$name.compose.png")
+            val capture = java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.getExternalFilesDir(null), "$name.compose.png")
             val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
             capture.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
             InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(
-                "sh -c 'run-as com.familyledger.app cat cache/$name.compose.png > /data/local/tmp/ledger-screens/$name.compose.png'"
+                "cp ${capture.absolutePath} /data/local/tmp/ledger-screens/$name.compose.png"
             ).let { ParcelFileDescriptor.AutoCloseInputStream(it).use { stream -> stream.readBytes() } }
         }
         InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("screencap -p /data/local/tmp/ledger-screens/$name")

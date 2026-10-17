@@ -11,6 +11,7 @@
 - 账本页紧凑摘要、日期分组与底部明细；保留下拉刷新与同步状态。
 - 报表分为总览、分类、成员、人情，共用日周月年范围，保留交互趋势和 AI 解读。
 - 设置分为角色、历史账本、备份、外观和更新；切页保留状态。
+- 更新服务器在新版发布验证成功后清理旧安装包，仅保留最新版本。
 - [V1.9.0 公开 APK](https://xdgeybztysuvvwagqkvb.supabase.co/storage/v1/object/public/app-updates/releases/22/ai-family-ledger-v1.9.0.apk) · [V1.9.0 验证记录](docs/V1.9.md)
 
 ## 版本记录

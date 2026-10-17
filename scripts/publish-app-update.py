@@ -1,4 +1,4 @@
-"""Publish a verified, immutable APK then atomically replace its public pointer.
+"""Publish a verified APK and pointer, then retain only the active release APK.
 
 Credentials are read only from the environment. No APK hash sidecar is written.
 The GitHub publish job serializes writers; do not run an additional writer.
@@ -21,12 +21,24 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 MAX_APK_BYTES = 50 * 1024 * 1024
 MAX_JSON_BYTES = 32 * 1024
+MAX_STORAGE_JSON_BYTES = 1024 * 1024
+LIST_PAGE_SIZE = 100
+DELETE_BATCH_SIZE = 100
 APK_TYPE = "application/vnd.android.package-archive"
 PACKAGE = "com.familyledger.app"
+VERSION_PATTERN = r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
 
 
 class PublishError(Exception):
     """A fixed, public-safe error message, never a server response or URL."""
+
+
+class CleanupError(PublishError):
+    """Publication succeeded, but retention was not confirmed. Never roll it back."""
+
+    def __init__(self, manifest, message):
+        super().__init__(message)
+        self.manifest = manifest
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -99,6 +111,45 @@ class Storage:
     def put(self, path, data, content_type, upsert):
         self.request(path, MAX_JSON_BYTES, data, content_type, upsert)
 
+    def cleanup_request(self, method, endpoint, payload):
+        request = Request(self.base + endpoint, data=json.dumps(payload).encode("utf-8"), method=method,
+                          headers={"Authorization": "Bearer " + self.key, "apikey": self.key,
+                                   "Content-Type": "application/json", "Cache-Control": "max-age=0"})
+        try:
+            with self.opener.open(request, timeout=60) as response:
+                if not 200 <= response.status < 300:
+                    raise PublishError("Storage cleanup request returned an unexpected status")
+                data = bounded_read(response, MAX_STORAGE_JSON_BYTES)
+        except HTTPError as error:
+            error.close()
+            raise PublishError("Storage cleanup request failed (HTTP " + str(error.code) + ")") from None
+        except PublishError:
+            raise
+        except Exception:
+            raise PublishError("Storage cleanup network request failed") from None
+        try:
+            result = json.loads(data)
+        except (ValueError, UnicodeError):
+            raise PublishError("Invalid storage cleanup response") from None
+        if not isinstance(result, list):
+            raise PublishError("Invalid storage cleanup response")
+        return result
+
+    def list_page(self, prefix, limit, offset):
+        if (not isinstance(prefix, str) or not re.fullmatch(r"releases(?:/[1-9][0-9]{0,9})?", prefix) or
+                type(limit) is not int or not 1 <= limit <= 1000 or type(offset) is not int or offset < 0):
+            raise PublishError("Refusing an unsafe storage listing")
+        return self.cleanup_request("POST", "list/app-updates", {
+            "prefix": prefix, "limit": limit, "offset": offset, "sortBy": {"column": "name", "order": "asc"},
+        })
+
+    def remove(self, paths):
+        # Never use bucket-emptying, directory prefixes, or a database-side delete.
+        if (not isinstance(paths, list) or not 1 <= len(paths) <= DELETE_BATCH_SIZE or
+                any(release_apk_code(path) is None for path in paths)):
+            raise PublishError("Refusing an unsafe APK deletion")
+        self.cleanup_request("DELETE", "app-updates", {"prefixes": paths})
+
 
 def validate_manifest(value):
     fields = {"schemaVersion", "versionCode", "versionName", "minSdk", "packageName", "apkPath",
@@ -110,7 +161,7 @@ def validate_manifest(value):
         if type(value[name]) is not int or not low <= value[name] <= high:
             raise PublishError("Invalid update manifest integer")
     if (not isinstance(value["versionName"], str) or len(value["versionName"]) > 32 or
-            not re.fullmatch(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", value["versionName"])):
+            not re.fullmatch(VERSION_PATTERN, value["versionName"])):
         raise PublishError("Invalid update version name")
     expected = f'releases/{value["versionCode"]}/ai-family-ledger-v{value["versionName"]}.apk'
     if value["packageName"] != PACKAGE or value["apkPath"] != expected:
@@ -192,6 +243,87 @@ def verify_apk(data, manifest):
         raise PublishError("Remote APK does not match this release; refusing publication")
 
 
+def release_apk_code(path):
+    if not isinstance(path, str):
+        return None
+    match = re.fullmatch(r"releases/([1-9][0-9]{0,9})/ai-family-ledger-v(" + VERSION_PATTERN + r")\.apk", path)
+    if match is None or len(match[2]) > 32 or int(match[1]) > 2100000000:
+        return None
+    return int(match[1])
+
+
+def list_children(storage, prefix):
+    entries = []
+    names = set()
+    while True:
+        page = storage.list_page(prefix, LIST_PAGE_SIZE, len(entries))
+        if not isinstance(page, list) or len(page) > LIST_PAGE_SIZE:
+            raise PublishError("Invalid storage listing page")
+        for entry in page:
+            if not isinstance(entry, dict) or not isinstance(entry.get("name"), str) or "id" not in entry:
+                raise PublishError("Invalid storage listing entry")
+            name = entry["name"]
+            if (not name or name in (".", "..") or any(char in name for char in "/\\") or
+                    any(ord(char) < 32 or 127 <= ord(char) <= 159 for char in name) or
+                    (entry["id"] is not None and (not isinstance(entry["id"], str) or not entry["id"]))):
+                raise PublishError("Unsafe storage listing entry")
+            if name in names:
+                raise PublishError("Storage listing changed or repeated a page; retry the serialized job")
+            names.add(name)
+            entries.append(entry)
+        if len(page) < LIST_PAGE_SIZE:
+            return entries
+
+
+def list_release_apks(storage):
+    paths = set()
+    for entry in list_children(storage, "releases"):
+        code = entry["name"]
+        if entry["id"] is not None or not re.fullmatch(r"[1-9][0-9]{0,9}", code) or int(code) > 2100000000:
+            continue
+        prefix = "releases/" + code
+        for child in list_children(storage, prefix):
+            path = prefix + "/" + child["name"]
+            if child["id"] is not None and release_apk_code(path) is not None:
+                paths.add(path)
+    return paths
+
+
+def require_current_manifest(storage, manifest):
+    raw = storage.read("latest.json", MAX_JSON_BYTES)
+    if raw is None or decode_manifest(raw) != manifest:
+        raise PublishError("Latest changed during cleanup; inspect concurrent writers before retrying")
+
+
+def cleanup_old_releases(storage, manifest):
+    try:
+        require_current_manifest(storage, manifest)
+        # Finish every page before deleting anything: deleting while using offsets
+        # would shift later pages and silently skip old releases.
+        paths = list_release_apks(storage)
+        active_path = manifest["apkPath"]
+        if active_path not in paths:
+            raise PublishError("Current APK missing from storage listing; no cleanup is safe")
+        obsolete = sorted(paths - {active_path})
+        # A same-code conflict or a newer upload might belong to another writer.
+        # Never delete it, nor falsely claim the bucket now contains only latest.
+        if any(release_apk_code(path) >= manifest["versionCode"] for path in obsolete):
+            raise PublishError("Unpublished same/newer APK found; inspect concurrent writers before retrying")
+        for start in range(0, len(obsolete), DELETE_BATCH_SIZE):
+            require_current_manifest(storage, manifest)
+            storage.remove(obsolete[start:start + DELETE_BATCH_SIZE])
+        require_current_manifest(storage, manifest)
+        if list_release_apks(storage) != {active_path}:
+            raise PublishError("Old APK cleanup was not confirmed by a fresh storage listing; retry cleanup")
+        require_current_manifest(storage, manifest)
+    except PublishError as error:
+        raise CleanupError(manifest, str(error)) from None
+    except Exception:
+        raise CleanupError(manifest, "Storage cleanup could not be completed") from None
+    print(f'APK retention verified: removed {len(obsolete)} old APK(s); '
+          f'retained 1 current APK: app-updates/{active_path}')
+
+
 def publish(storage, apk_dir, gradle, notes):
     manifest, apk_bytes = local_release(apk_dir, gradle, notes)
     previous_bytes = storage.read("latest.json", MAX_JSON_BYTES)
@@ -204,6 +336,7 @@ def publish(storage, apk_dir, gradle, notes):
             if manifest != previous:
                 raise PublishError("Existing version metadata or APK differs; increment the version")
             verify_apk(storage.read(manifest["apkPath"], MAX_APK_BYTES), manifest)
+            cleanup_old_releases(storage, manifest)
             return previous
     existing_apk = storage.read(manifest["apkPath"], MAX_APK_BYTES)
     if existing_apk is not None:
@@ -224,6 +357,7 @@ def publish(storage, apk_dir, gradle, notes):
     readback = storage.read("latest.json", MAX_JSON_BYTES)
     if readback is None or decode_manifest(readback) != manifest:
         raise PublishError("Latest manifest readback verification failed")
+    cleanup_old_releases(storage, manifest)
     return manifest
 
 
@@ -236,6 +370,11 @@ def main():
     try:
         storage = Storage(os.environ.get("SUPABASE_URL", ""), os.environ.get("SUPABASE_UPDATE_SERVICE_KEY", ""))
         result = publish(storage, args.apk_dir, args.gradle, args.notes)
+    except CleanupError as error:
+        print(f'Update v{error.manifest["versionName"]} was published; old APK cleanup incomplete: {error}. '
+              'Latest was not rolled back. Resolve the cleanup issue and rerun the same serialized release job.',
+              file=sys.stderr)
+        return 2
     except PublishError as error:
         print("Update publication failed: " + str(error), file=sys.stderr)
         return 1

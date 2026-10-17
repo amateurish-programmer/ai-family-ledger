@@ -18,7 +18,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -78,7 +78,8 @@ internal fun ReportContent(entries: List<LedgerEntry>, month: YearMonth, onMonth
     }
 
     Column(Modifier.fillMaxSize()) {
-        Column(Modifier.padding(horizontal = style.pagePadding).padding(top = 8.dp, bottom = 4.dp)) {
+        Column(Modifier.fillMaxWidth().zIndex(1f).background(MaterialTheme.colorScheme.background)
+            .padding(horizontal = style.pagePadding).padding(top = 8.dp, bottom = 4.dp)) {
             Row(Modifier.fillMaxWidth().heightIn(min = 32.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 Text("收支报告", style = MaterialTheme.typography.titleLarge)
@@ -130,7 +131,7 @@ internal fun ReportContent(entries: List<LedgerEntry>, month: YearMonth, onMonth
         }
         sectionStates.SaveableStateProvider(section.name) {
             val listState = rememberLazyListState()
-            LazyColumn(Modifier.weight(1f).fillMaxWidth().clipToBounds().testTag("report_list"), state = listState,
+            LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("report_list"), state = listState,
                 contentPadding = PaddingValues(start = style.pagePadding, end = style.pagePadding, top = 8.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(style.sectionSpacing)) {
                 when (section) {
