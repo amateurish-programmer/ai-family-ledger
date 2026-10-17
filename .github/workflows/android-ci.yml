@@ -2,9 +2,9 @@ name: Android APK
 
 on:
   push:
-    paths: ['android/**', 'supabase/**', 'scripts/check-*.mjs', '.github/workflows/android-ci.yml', 'scripts/publish-app-update.py', 'scripts/test_publish_app_update.py', 'scripts/build-update-fixtures.sh', 'docs/update-notes.txt']
+    paths: ['android/**', 'supabase/**', 'deploy/cloudflare-gateway/**', 'scripts/check-*.mjs', '.github/workflows/android-ci.yml', 'scripts/publish-app-update.py', 'scripts/test_publish_app_update.py', 'scripts/build-update-fixtures.sh', 'docs/update-notes.txt']
   pull_request:
-    paths: ['android/**', 'supabase/**', 'scripts/check-*.mjs', '.github/workflows/android-ci.yml', 'scripts/publish-app-update.py', 'scripts/test_publish_app_update.py', 'scripts/build-update-fixtures.sh', 'docs/update-notes.txt']
+    paths: ['android/**', 'supabase/**', 'deploy/cloudflare-gateway/**', 'scripts/check-*.mjs', '.github/workflows/android-ci.yml', 'scripts/publish-app-update.py', 'scripts/test_publish_app_update.py', 'scripts/build-update-fixtures.sh', 'docs/update-notes.txt']
   workflow_dispatch:
     inputs:
       build_only:
@@ -63,6 +63,12 @@ jobs:
           node scripts/check-finance-chat.mjs
           node scripts/check-finance-v2.mjs
           node scripts/check-gift-ai.mjs
+      - name: Check fixed cloud gateway transport
+        working-directory: deploy/cloudflare-gateway
+        run: |
+          npm ci
+          npm test
+          npm run test:runtime
       - name: Check family profile permissions in isolated PostgreSQL
         run: |
           psql -v ON_ERROR_STOP=1 -f supabase/tests/bootstrap.sql

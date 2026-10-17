@@ -16,7 +16,7 @@ class AppUpdateTest {
         assertTrue(update.isNewerThan(11))
         assertFalse(update.isNewerThan(12))
         assertFalse(update.isNewerThan(13))
-        assertEquals("https://xdgeybztysuvvwagqkvb.supabase.co/storage/v1/object/public/app-updates/releases/12/ai-family-ledger-v0.12.0.apk", update.downloadUrl())
+        assertEquals("https://family-ledger-gateway.pages.dev/updates/releases/12/ai-family-ledger-v0.12.0.apk", update.downloadUrl())
     }
 
     @Test fun rejectsUnicodeStorageKeyInsteadOfPublishingAnUndownloadableUpdate() {

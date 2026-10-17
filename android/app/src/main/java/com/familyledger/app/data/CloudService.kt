@@ -406,7 +406,7 @@ class CloudService(context: Context) {
         val base = officialUrl(pair.first)
         require(path.startsWith("/") && !path.startsWith("//"))
         syncMetrics?.takeIf { it.version == version }?.let { it.requests++ }
-        val connection = URI(base + path).toURL().openConnection() as HttpURLConnection
+        val connection = URI(CloudEndpoint.requestUrl(base, path)).toURL().openConnection() as HttpURLConnection
         val aiRequest = path.startsWith("/functions/")
         val deadline = System.nanoTime() + if (aiRequest) 120_000_000_000L else 90_000_000_000L
         try {

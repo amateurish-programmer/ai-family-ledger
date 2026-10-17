@@ -4,7 +4,7 @@
 
 ## 公开发布合同
 
-固定清单地址为 `https://xdgeybztysuvvwagqkvb.supabase.co/storage/v1/object/public/app-updates/latest.json`。APK 地址只从相同固定 bucket 与清单中的受限路径派生，每个路径段进行 UTF-8 URL 编码。清单不接受外部下载 URL，不读取任何云端账本。云端对象键使用 ASCII 文件名；本地交付文件继续使用 `AI家庭账本-v{versionName}.apk`。
+固定清单地址为 `https://family-ledger-gateway.pages.dev/updates/latest.json`。APK 地址只从相同固定更新入口 与清单中的受限路径派生，每个路径段进行 UTF-8 URL 编码。清单不接受外部下载 URL，不读取任何云端账本。云端对象键使用 ASCII 文件名；本地交付文件继续使用 `AI家庭账本-v{versionName}.apk`。
 
 清单是严格 JSON 对象，字段必须完整且无额外字段、重复字段、尾随内容或数字类型转换：
 
@@ -54,3 +54,6 @@
 
 
 V1.1最终CI34088820861的91项JVM及46项Android35检查通过，包含2项日期额度、5项自动检查模型和2项实际弹窗交互新增检查。公开1.1.0/code13清单及完整APK下载已核对。真实Activity旋转、系统跨日和手机安装仍是独立验收边界，详见 [V1.1记录](V1.1.md)。
+
+
+V1.9.2 由固定 Pages 路径转发到原 Supabase app-updates 桶，保留原始清单和 APK 字节。OTA 不携带账号凭据；发布端仍直连原桶，内部大小、摘要、身份和签名检查保持不变。旧版首次用移动网络或手动覆盖修复。详见 [V1.9.2](V1.9.2.md)。

@@ -1,0 +1,11 @@
+{
+  "name": "family-ledger-gateway",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test worker.test.mjs",
+    "test:runtime": "node --test worker.runtime.test.mjs",
+    "prepare:pages": "node prepare-pages.mjs"
+  },
+  "devDependencies": { "wrangler": "4.92.0" }
+}

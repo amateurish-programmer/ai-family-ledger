@@ -3,7 +3,16 @@ package com.familyledger.app.data
 /** Public project identifiers only. Provider and administrative secrets stay on the server. */
 object CloudEndpoint {
     const val URL = "https://xdgeybztysuvvwagqkvb.supabase.co"
+    const val TRANSPORT_URL = "https://family-ledger-gateway.pages.dev"
     const val PUBLIC_KEY = "sb_publishable_DMkKHBxMWwQ-j-hWvj-cuw_pE8R4NH-"
+
+    /** Keep stored project identity stable while changing only the HTTPS transport. */
+    fun requestUrl(projectUrl: String, path: String): String {
+        require(projectUrl == URL) { "云项目不匹配，已停止请求" }
+        require(path.startsWith("/") && !path.startsWith("//") &&
+            path.none { it == '\\' || it == '#' || it.isISOControl() }) { "云端请求路径无效" }
+        return TRANSPORT_URL + path
+    }
 
     fun requireCompatible(previous: String?, hasCloudIdentity: Boolean) {
         require(!hasCloudIdentity || previous == URL) {

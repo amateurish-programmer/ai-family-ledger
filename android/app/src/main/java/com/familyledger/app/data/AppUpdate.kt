@@ -41,7 +41,7 @@ data class AppUpdate(
     companion object {
         const val PACKAGE_NAME = "com.familyledger.app"
         const val MAX_APK_BYTES = 50L * 1024 * 1024
-        const val PUBLIC_ROOT = "https://xdgeybztysuvvwagqkvb.supabase.co/storage/v1/object/public/app-updates/"
+        const val PUBLIC_ROOT = CloudEndpoint.TRANSPORT_URL + "/updates/"
         const val MANIFEST_URL = PUBLIC_ROOT + "latest.json"
     }
 }

@@ -68,3 +68,8 @@ Storage缺失错误处理依据[官方错误码说明](https://supabase.com/docs
 ## V1.9.0 最新版本保留验收（2026-10-17）
 
 [CI 39000605636](https://github.com/amateurish-programmer/ai-family-ledger/actions/runs/39000605636) 的构建、后端、模拟器与发布全部成功，46 项发布测试通过。生产日志报告删除 11 个旧 APK，并经最终列举确认规范更新路径中仅保留 `app-updates/releases/22/ai-family-ledger-v1.9.0.apk`。随后从本机匿名完整下载 18,045,361 字节，与本次 CI 安装包逐字节一致，latest 合同和签名核对通过。实体手机覆盖升级未在本次执行；详情见 [V1.9](V1.9.md)。历史部署记录保留，但被清理的旧 APK 直链不再作为可用下载入口。
+
+
+## V1.9.2 Pages 网络入口
+
+发布器继续向原 Supabase 上传并验证；客户端通过 `https://family-ledger-gateway.pages.dev/updates/` 读取同一清单和 APK，固定路径转发不需要服务密钥。后续版本无需重新部署 Pages。发布后需额外验证 Pages 清单、完整下载和手机网络；旧版受影响 Wi-Fi 需移动网络或一次手动覆盖安装取得修复。
