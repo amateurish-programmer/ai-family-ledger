@@ -13,9 +13,9 @@
 - AI 结合最多四十笔消费明细节选，按收支概况、消费观察和建议分段解读；金额、占比和笔数均由程序计算，生成前说明发送范围。
 - 设置分为角色、历史账本、备份、外观和更新；切页保留状态。
 - 更新服务器在新版发布验证成功后清理旧安装包，仅保留最新版本。
-- [V1.9.1 验证与发布记录](docs/V1.9.1.md)
+- [V1.9.1 公开 APK](https://xdgeybztysuvvwagqkvb.supabase.co/storage/v1/object/public/app-updates/releases/23/ai-family-ledger-v1.9.1.apk) · [V1.9.1 验证与发布记录](docs/V1.9.1.md)
 
-V1.9.1 正在进行源码、自动化和云端验证；正式发布证据会在发布后更新。实体手机验收未执行。
+V1.9.1 已通过[正式发布流程](https://github.com/amateurish-programmer/ai-family-ledger/actions/runs/39002960144)：167 项基础测试、77 项模拟器测试及后端/发布检查通过。服务端已更新，三组真实模型合成报告验证通过；公开 APK 与构建产物一致，沿用原签名，Supabase 仅保留最新版。实体手机与用户真实账本验收未执行。
 
 ## 版本记录
 
