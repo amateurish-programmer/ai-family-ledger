@@ -19,7 +19,7 @@
 - 更新服务器在新版发布验证成功后清理旧安装包，仅保留最新版本。
 - [V1.9.5 公开 APK](https://family-ledger-gateway.pages.dev/updates/releases/27/ai-family-ledger-v1.9.5.apk) · [V1.9.5 验证与发布记录](docs/V1.9.5.md)
 
-V1.9.5 已通过[正式发布流程](https://github.com/amateurish-programmer/ai-family-ledger/actions/workflows/android-ci.yml)：JVM、Android 15 模拟器及后端/发布检查通过，lint 无错误。两个公开入口的 APK 与更新清单逐项核对一致，沿用原签名，Supabase 仅保留最新版。已安装旧版可在设置页升级或手动覆盖安装，不要卸载或清除数据。
+V1.9.5 已通过[正式发布流程](https://github.com/amateurish-programmer/ai-family-ledger/actions/runs/39045917050)：172 项 JVM、78 项 Android 15 模拟器及后端/发布检查通过，lint 无错误。两个公开入口的 APK 与更新清单逐项核对一致，沿用原签名，Supabase 仅保留最新版。已安装旧版可在设置页升级或手动覆盖安装，不要卸载或清除数据。
 
 ## 版本记录
 
