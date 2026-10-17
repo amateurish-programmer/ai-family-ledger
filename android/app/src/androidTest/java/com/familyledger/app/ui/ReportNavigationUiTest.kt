@@ -108,4 +108,28 @@ class ReportNavigationUiTest {
         compose.onNodeWithText("日报").performClick()
         compose.onNodeWithTag("report_period_label").assertTextEquals(today.toString())
     }
+
+    @Test fun detailAnalysisRequiresDisclosureConfirmation() {
+        var requests = 0
+        compose.setContent {
+            FamilyLedgerTheme {
+                ReportContent(listOf(entry("current", "2026-09-07", 123)), YearMonth.of(2026, 9), {},
+                    false, false, null, null, { report, _ ->
+                        org.junit.Assert.assertEquals(LocalDate.parse("2026-09-01"), report.range.start)
+                        requests++
+                    }, {}, {})
+            }
+        }
+        compose.onNodeWithTag("report_list").performScrollToNode(hasText("AI 解读本期报告"))
+        compose.onNodeWithText("AI 解读本期报告").performClick()
+        compose.onNodeWithText("解读本期消费明细？").assertIsDisplayed()
+        compose.onNodeWithText("备注节选", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("本期及对照期间统计", substring = true).assertIsDisplayed()
+        compose.runOnIdle { org.junit.Assert.assertEquals(0, requests) }
+        compose.onNodeWithText("取消").performClick()
+        compose.runOnIdle { org.junit.Assert.assertEquals(0, requests) }
+        compose.onNodeWithText("AI 解读本期报告").performClick()
+        compose.onNodeWithText("生成解读").performClick()
+        compose.runOnIdle { org.junit.Assert.assertEquals(1, requests) }
+    }
 }

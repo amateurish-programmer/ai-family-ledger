@@ -82,12 +82,13 @@ internal fun ReportContent(entries: List<LedgerEntry>, month: YearMonth, onMonth
             .padding(horizontal = style.pagePadding).padding(top = 8.dp, bottom = 4.dp)) {
             Row(Modifier.fillMaxWidth().heightIn(min = 32.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                Text("收支报告", style = MaterialTheme.typography.titleLarge)
+                Text("收支报告", modifier = Modifier.testTag("report_heading"), style = MaterialTheme.typography.titleLarge)
                 if (syncing) SyncStatus(true)
                 Spacer(Modifier.weight(1f))
                 Icon(Icons.Outlined.BarChart, null, Modifier.size(22.dp), tint = LedgerSage)
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Spacer(Modifier.height(16.dp))
+            Row(Modifier.fillMaxWidth().testTag("report_period_choices"), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 ReportPeriod.entries.forEach { choice ->
                     FilterChip(selected = period == choice, onClick = {
                         if (daily != (choice == ReportPeriod.DAY || choice == ReportPeriod.WEEK)) {
@@ -158,7 +159,7 @@ internal fun ReportContent(entries: List<LedgerEntry>, month: YearMonth, onMonth
                                     Icon(Icons.Outlined.AutoAwesome, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
                                     Text("读懂这份报告", style = MaterialTheme.typography.titleMedium)
                                 }
-                                Text("根据本期汇总解释收支，金额以账本统计为准。", style = MaterialTheme.typography.bodySmall,
+                                Text("看看钱花在了哪里，结合消费明细给出收支建议。", style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Button(onClick = { requestAi = true }, enabled = !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                                     Text("AI 解读本期报告")
@@ -211,8 +212,8 @@ internal fun ReportContent(entries: List<LedgerEntry>, month: YearMonth, onMonth
             }
         }
     }
-    if (requestAi) AlertDialog(onDismissRequest = { requestAi = false }, title = { Text("发送报告汇总给 AI？") },
-        text = { Text("将发送本期收支、分类、成员和${if (daily) "每日" else "月度"}趋势汇总，不发送逐笔备注。请先在设置中连接云端。") },
+    if (requestAi) AlertDialog(onDismissRequest = { requestAi = false }, title = { Text("解读本期消费明细？") },
+        text = { Text("将发送本期及对照期间统计，以及本期最多 40 笔收支的日期、金额、分类、成员、商家和备注节选，用于分析消费并给出建议。记录较多时优先大额收支，再补最近记录；不发送账户字段。") },
         confirmButton = { TextButton(onClick = { requestAi = false; onAnalyze(complete, reportKey) }) { Text("生成解读") } },
         dismissButton = { TextButton(onClick = { requestAi = false }) { Text("取消") } })
 }

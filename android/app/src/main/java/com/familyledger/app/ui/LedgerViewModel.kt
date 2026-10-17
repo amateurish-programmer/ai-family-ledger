@@ -298,11 +298,15 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         mutableState.update { it.copy(cloudConflicts = it.cloudConflicts.filterNot { c -> c.id == conflict.id }, message = "冲突已处理") }
     }
     fun analyzeReport(report: LedgerReport, key: String) = perform {
-        val input = org.json.JSONObject().put("period", report.period)
-            .put("income", Money.format(report.summary.income)).put("expense", Money.format(report.summary.expense)).put("balance", Money.format(report.summary.balance))
-        fun amounts(rows: List<CategoryTotal>) = org.json.JSONArray().apply { rows.forEach { put(org.json.JSONObject().put("name", it.name).put("amount", Money.format(it.amount))) } }
-        input.put("categories", amounts(report.summary.categories)).put("members", amounts(report.members))
-        input.put("trend", org.json.JSONArray().apply { report.trend.forEach { put(org.json.JSONObject().put("period", it.period).put("income", Money.format(it.income)).put("expense", Money.format(it.expense))) } })
+        val snapshot = state.value
+        val currentKey = "${report.period}|${report.kind}|${snapshot.entries.hashCode()}"
+        require(currentKey == key) { "账本已更新，请重新生成本期解读" }
+        val lastSync = snapshot.cloudStatus?.lastSync?.takeIf { it > 0 }?.let {
+            java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneId.systemDefault()).toLocalDateTime().toString()
+        } ?: "尚未成功同步"
+        val input = withContext(Dispatchers.Default) {
+            ReportAnalysisContext.build(snapshot.entries, report.range.start, report.kind, java.time.LocalDate.now(), lastSync)
+        }
         val result = requireCloud().ai("report", input)
         mutableState.update { it.copy(reportKey = key, reportText = result) }
     }

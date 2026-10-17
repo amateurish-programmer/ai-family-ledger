@@ -125,3 +125,4 @@ for (const fixture of [daily, weekly]) {
   assert.equal((await response.json()).result.includes('基础统计摘要'), false); count++;
 }
 console.log(`Report regression checks: ${count} passed. No live requests.`);
+await import('./check-report-detail.mjs');

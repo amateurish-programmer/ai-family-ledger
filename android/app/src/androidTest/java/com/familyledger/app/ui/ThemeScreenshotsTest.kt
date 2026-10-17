@@ -85,6 +85,7 @@ class ThemeScreenshotsTest {
             listOf("chat", "ledger", "report", "settings").forEachIndexed { index, label ->
                 compose.runOnIdle { page = index }
                 compose.waitForIdle()
+                if (index == 2) assertReportHeadingGap()
                 screenshot("theme-${choice.storageId}-$label.png")
             }
         }
@@ -100,6 +101,7 @@ class ThemeScreenshotsTest {
             compose.onAllNodesWithText("¥ 99999999.99").onFirst().assertIsDisplayed()
             compose.onNodeWithTag("report_section_members").performClick()
             compose.waitForIdle()
+            assertReportHeadingGap()
             compose.onNodeWithTag("report_list").performScrollToNode(hasText("家庭成员名称完整显示"))
             val listBounds = compose.onNodeWithTag("report_list").fetchSemanticsNode().boundsInRoot
             val tabBounds = compose.onNodeWithTag("report_section_members").fetchSemanticsNode().boundsInRoot
@@ -107,6 +109,13 @@ class ThemeScreenshotsTest {
             org.junit.Assert.assertTrue("Report content overlaps section tabs: list=$listBounds, tab=$tabBounds", listBounds.top >= tabBounds.bottom)
             screenshot("theme-${choice.storageId}-narrow-large-report.png")
         }
+    }
+
+    private fun assertReportHeadingGap() {
+        val title = compose.onNodeWithTag("report_heading").fetchSemanticsNode().boundsInRoot
+        val periods = compose.onNodeWithTag("report_period_choices").fetchSemanticsNode().boundsInRoot
+        val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+        org.junit.Assert.assertTrue("Report title needs visible breathing room before period controls", periods.top - title.bottom >= 12f * density)
     }
 
     private fun screenshot(name: String) {
