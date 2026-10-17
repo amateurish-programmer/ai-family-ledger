@@ -4,8 +4,10 @@ import android.app.DatePickerDialog
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectable
@@ -61,6 +63,8 @@ internal fun ReportContent(entries: List<LedgerEntry>, month: YearMonth, onMonth
         mutableStateOf((if (month == YearMonth.now()) LocalDate.now() else month.atDay(1)).toString())
     }
     var sectionName by rememberSaveable { mutableStateOf(ReportSection.OVERVIEW.name) }
+    var selectedCategory by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedCategoryIncome by rememberSaveable { mutableStateOf(false) }
     val period = ReportPeriod.valueOf(periodName)
     val section = ReportSection.valueOf(sectionName)
     val daily = period == ReportPeriod.DAY || period == ReportPeriod.WEEK
@@ -180,18 +184,28 @@ internal fun ReportContent(entries: List<LedgerEntry>, month: YearMonth, onMonth
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     }
                     ReportSection.CATEGORIES -> {
-                        item { SectionHeading("支出去向", "按一级分类统计 · 本期支出 ¥ ${Money.format(report.expense)}") }
-                        if (report.categories.isEmpty()) item { EmptyLedger("还没有支出记录", "确认记账后，支出去向会显示在这里。") }
+                        item(key = "expense_categories_heading") {
+                            SectionHeading("支出去向", "本期支出 ¥ ${Money.format(report.expense)} · 点击分类查看明细")
+                        }
+                        if (report.categories.isEmpty()) item(key = "expense_categories_empty") {
+                            EmptyLedger("还没有支出记录", "确认记账后，支出去向会显示在这里。")
+                        }
                         itemsIndexed(report.categories, key = { _, row -> "category:${row.name}" }) { index, category ->
-                            LedgerPanel(contentPadding = style.rowPadding) {
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text("${index + 1}".padStart(2, '0'), color = MaterialTheme.colorScheme.primary,
-                                        style = MaterialTheme.typography.labelMedium)
-                                    RankedAmount(category.name, "¥ ${Money.format(category.amount)}", Modifier.weight(1f))
-                                }
-                                LinearProgressIndicator(progress = { (category.amount.toDouble() / report.expense.coerceAtLeast(1)).toFloat().coerceIn(0f, 1f) },
-                                    modifier = Modifier.fillMaxWidth().height(5.dp), color = MaterialTheme.colorScheme.primary,
-                                    trackColor = MaterialTheme.colorScheme.primaryContainer)
+                            CategoryRankCard(index, category, report.expense, income = false,
+                                tag = "report_expense_category_$index") {
+                                selectedCategory = category.name; selectedCategoryIncome = false
+                            }
+                        }
+                        item(key = "income_sources_heading") {
+                            SectionHeading("收入来源", "本期收入 ¥ ${Money.format(report.income)} · 点击来源查看明细")
+                        }
+                        if (complete.incomeSources.isEmpty()) item(key = "income_sources_empty") {
+                            EmptyLedger("还没有收入记录", "确认记账后，收入来源会显示在这里。")
+                        }
+                        itemsIndexed(complete.incomeSources, key = { _, row -> "income:${row.name}" }) { index, source ->
+                            CategoryRankCard(index, source, report.income, income = true,
+                                tag = "report_income_source_$index") {
+                                selectedCategory = source.name; selectedCategoryIncome = true
                             }
                         }
                     }
@@ -212,10 +226,69 @@ internal fun ReportContent(entries: List<LedgerEntry>, month: YearMonth, onMonth
             }
         }
     }
+    selectedCategory?.let { name -> CategoryDetailSheet(name, selectedCategoryIncome, entries, complete.range, complete.period) { selectedCategory = null } }
     if (requestAi) AlertDialog(onDismissRequest = { requestAi = false }, title = { Text("解读本期消费明细？") },
         text = { Text("将发送本期及对照期间统计，以及本期最多 40 笔收支的日期、金额、分类、成员、商家和备注节选，用于分析消费并给出建议。记录较多时优先大额收支，再补最近记录；不发送账户字段。") },
         confirmButton = { TextButton(onClick = { requestAi = false; onAnalyze(complete, reportKey) }) { Text("生成解读") } },
         dismissButton = { TextButton(onClick = { requestAi = false }) { Text("取消") } })
+}
+
+@Composable
+private fun CategoryRankCard(index: Int, category: CategoryTotal, total: Long, income: Boolean, tag: String, onOpen: () -> Unit) {
+    val style = LocalLedgerStyle.current
+    val color = if (income) LedgerSage else MaterialTheme.colorScheme.primary
+    LedgerPanel(Modifier.testTag(tag).clickable(onClickLabel = "查看${category.name}明细", onClick = onOpen),
+        contentPadding = style.rowPadding) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("${index + 1}".padStart(2, '0'), color = color, style = MaterialTheme.typography.labelMedium)
+            RankedAmount(category.name, "¥ ${Money.format(category.amount)}", Modifier.weight(1f))
+        }
+        LinearProgressIndicator(progress = { (category.amount.toDouble() / total.coerceAtLeast(1)).toFloat().coerceIn(0f, 1f) },
+            modifier = Modifier.fillMaxWidth().height(5.dp), color = color,
+            trackColor = if (income) LedgerSage.copy(alpha = .12f) else MaterialTheme.colorScheme.primaryContainer)
+    }
+}
+
+/** Second-level view of one category: the period's entries of that category, mirroring the gift detail sheet. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CategoryDetailSheet(name: String, income: Boolean, entries: List<LedgerEntry>, range: ReportRange,
+    periodLabel: String, onClose: () -> Unit) {
+    val type = if (income) EntryType.INCOME else EntryType.EXPENSE
+    val rows = remember(entries, name, type, range) {
+        entries.filter { it.deletedAt == null && it.currency == "CNY" && it.type == type && it.categoryL1 == name &&
+            it.occurredOn >= range.start.toString() && it.occurredOn < range.endExclusive.toString() }
+            .sortedWith(compareByDescending<LedgerEntry> { it.occurredOn }.thenBy { it.id })
+    }
+    val total = rows.fold(0L) { sum, entry -> Math.addExact(sum, entry.amountMinor) }
+    val style = LocalLedgerStyle.current
+    ModalBottomSheet(onDismissRequest = onClose, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = style.pagePadding).padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(name, Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+                TextButton(onClick = onClose) { Text("关闭") }
+            }
+            Text("${if (income) "收入来源" else "支出去向"}明细 · $periodLabel", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("合计 ¥ ${Money.format(total)} · ${rows.size} 笔", style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold, fontFamily = style.moneyFontFamily)
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 440.dp).testTag("category_detail"),
+                verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                items(rows, key = { it.id }) { entry ->
+                    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Text("${entry.occurredOn} · ${entry.type.label} ¥ ${Money.format(entry.amountMinor)}",
+                            style = MaterialTheme.typography.titleSmall, fontFamily = style.moneyFontFamily)
+                        Text(listOf(entry.categoryL1, entry.categoryL2, entry.member, entry.account)
+                            .filter(String::isNotBlank).joinToString(" · "),
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (entry.note.isNotBlank()) Text(entry.note, style = MaterialTheme.typography.bodyMedium)
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable

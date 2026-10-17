@@ -1,12 +1,14 @@
 # AI 家庭账本
 
-面向 Android 的家庭记账 App，采用 Kotlin + Jetpack Compose + Room。当前版本 V1.9.4 修复记账页聊天内容偶尔覆盖顶部标题的问题；登录、同步、AI 和更新按当前网络自动选路，Wi-Fi 使用 Pages 入口，移动网络保留原 Supabase 路径；保留奶油暖居、手账生活风、简洁财务风三种主题。注册登录后即可创建或加入家庭使用。
+面向 Android 的家庭记账 App，采用 Kotlin + Jetpack Compose + Room。当前版本 V1.9.5 在报表分类页新增收入来源排行，支出去向与收入来源均可点击查看本期分类明细；登录、同步、AI 和更新按当前网络自动选路，Wi-Fi 使用 Pages 入口，移动网络保留原 Supabase 路径；保留奶油暖居、手账生活风、简洁财务风三种主题。注册登录后即可创建或加入家庭使用。
 
 [GitHub 仓库](https://github.com/amateurish-programmer/ai-family-ledger) · [APK 构建与下载](https://github.com/amateurish-programmer/ai-family-ledger/actions/workflows/android-ci.yml)
 
-## 当前版本 V1.9.4
+## 当前版本 V1.9.5
 
-- 修复记账页聊天内容偶尔覆盖顶部「家庭账本」标题：固定标题获得独立背景与显示层级，滚动内容不再叠印其上，方案与报表页一致。
+- 报表分类页新增收入来源排行：按一级分类统计本期收入，日报、周报、月报、年报共用。
+- 支出去向与收入来源的分类卡片均可点击，进入本期分类明细：日期、类型、金额、二级分类、成员、账户与备注，含合计金额与笔数。
+- 报告文本导出同步增加收入来源。
 - 登录、同步、AI 和更新按当前网络自动选路：Wi-Fi 使用 Pages，移动网络使用原地址；原账号、项目绑定和账本保留。
 - 默认奶油暖居；设置 → 外观主题可切换手账生活风、简洁财务风，主题包含颜色、字体、间距、形状与装饰，本机记住选择。
 - 记账页小票式提案和结构化助手回复；唯一文字入口与确认入账规则保持不变。
@@ -15,12 +17,13 @@
 - AI 结合最多四十笔消费明细节选，按收支概况、消费观察和建议分段解读；金额、占比和笔数均由程序计算，生成前说明发送范围。
 - 设置分为角色、历史账本、备份、外观和更新；切页保留状态。
 - 更新服务器在新版发布验证成功后清理旧安装包，仅保留最新版本。
-- [V1.9.4 公开 APK](https://family-ledger-gateway.pages.dev/updates/releases/26/ai-family-ledger-v1.9.4.apk) · [V1.9.4 验证与发布记录](docs/V1.9.4.md)
+- [V1.9.5 公开 APK](https://family-ledger-gateway.pages.dev/updates/releases/27/ai-family-ledger-v1.9.5.apk) · [V1.9.5 验证与发布记录](docs/V1.9.5.md)
 
-V1.9.4 已通过[正式发布流程](https://github.com/amateurish-programmer/ai-family-ledger/actions/runs/39039402280)：171 项 JVM、77 项 Android 15 模拟器及后端/发布检查通过，lint 无错误。两个公开入口的 APK 与更新清单逐项核对一致，沿用原签名，Supabase 仅保留最新版。真机覆盖安装与真实账号同步验收未执行；已安装旧版可在设置页升级或手动覆盖安装，不要卸载或清除数据。
+V1.9.5 已通过[正式发布流程](https://github.com/amateurish-programmer/ai-family-ledger/actions/workflows/android-ci.yml)：JVM、Android 15 模拟器及后端/发布检查通过，lint 无错误。两个公开入口的 APK 与更新清单逐项核对一致，沿用原签名，Supabase 仅保留最新版。已安装旧版可在设置页升级或手动覆盖安装，不要卸载或清除数据。
 
 ## 版本记录
 
+- **V1.9.5**：报表分类页收入来源排行与支出去向、收入来源点击明细。
 - **V1.9.4**：记账页聊天内容不再覆盖顶部标题。
 - **V1.9.3**：Wi-Fi 使用 Pages、移动网络保留原地址，统一账号和更新选路。
 
@@ -65,9 +68,9 @@ V1.9.4 已通过[正式发布流程](https://github.com/amateurish-programmer/ai
 
 ## 不安装 Android Studio，获取 APK
 
-仓库已配置云端构建。每次升级自动提交经检查的源码，并生成带版本号的安装包。打开上方 **APK 构建与下载**，选择成功运行，在 Artifacts 下载 `AI家庭账本-v1.9.4`，解压并安装 `AI家庭账本-v1.9.4.apk`。后续版本名称自动读取工程版本号，不生成本机 SHA-256 文件。也可 **Run workflow** 手动重建；`auth_checks` 在仅构建模式追加全部 JVM 测试，`device_tests` 启用模拟器测试。
+仓库已配置云端构建。每次升级自动提交经检查的源码，并生成带版本号的安装包。打开上方 **APK 构建与下载**，选择成功运行，在 Artifacts 下载 `AI家庭账本-v1.9.5`，解压并安装 `AI家庭账本-v1.9.5.apk`。后续版本名称自动读取工程版本号，不生成本机 SHA-256 文件。也可 **Run workflow** 手动重建；`auth_checks` 在仅构建模式追加全部 JVM 测试，`device_tests` 启用模拟器测试。
 
-已安装旧版的用户可通过 App 设置页检查并升级至 V1.9.4；首次安装可下载最新 APK。验证和在线发布状态详见 V1.9.4 记录。发布需显式启用 `publish_release`，只有 JVM、模拟器及后端检查成功后才更新 Supabase 最新版本。
+已安装旧版的用户可通过 App 设置页检查并升级至 V1.9.5；首次安装可下载最新 APK。验证和在线发布状态详见 V1.9.5 记录。发布需显式启用 `publish_release`，只有 JVM、模拟器及后端检查成功后才更新 Supabase 最新版本。
 
 详细步骤见 [云端构建指南](docs/CLOUD_BUILD.md)。首次安装从空账本开始，不包含用户真实历史数据。
 

@@ -58,7 +58,23 @@ class LedgerReportTest {
             assertEquals(3, report.count)
             assertEquals(listOf(CategoryTotal("家人", 3)), report.members)
             assertEquals(listOf(CategoryTotal("日常", 3)), report.summary.categories)
+            assertEquals(listOf(CategoryTotal("日常", 10)), report.incomeSources)
         }
+    }
+
+    @Test fun incomeSourcesRankCategoriesWithinPeriodAndExport() {
+        val rows = listOf(
+            row("2026-03-02", 500, EntryType.INCOME).copy(categoryL1 = "工资"),
+            row("2026-03-05", 200, EntryType.INCOME).copy(categoryL1 = "理财"),
+            row("2026-03-09", 300, EntryType.INCOME).copy(categoryL1 = "工资"),
+            row("2026-02-28", 999, EntryType.INCOME).copy(categoryL1 = "上月收入"),
+            row("2026-03-10", 50))
+        val report = buildReport(rows, LocalDate.parse("2026-03-15"), ReportPeriod.MONTH)
+        assertEquals(listOf(CategoryTotal("工资", 800), CategoryTotal("理财", 200)), report.incomeSources)
+        assertTrue(report.text().contains("收入来源"))
+        assertTrue(report.text().contains("工资：¥ 8.00"))
+        assertTrue(report.text().contains("理财：¥ 2.00"))
+        assertFalse(report.text().contains("上月收入"))
     }
 
     @Test fun oldMonthAndYearApiRetainsTrendAndComparison() {

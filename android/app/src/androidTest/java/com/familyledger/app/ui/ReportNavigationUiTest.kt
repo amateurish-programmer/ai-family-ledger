@@ -102,6 +102,36 @@ class ReportNavigationUiTest {
         org.junit.Assert.assertNotEquals(before, viewport())
     }
 
+    @Test fun categoryRowsOpenExpenseAndIncomeDetails() {
+        compose.setContent {
+            FamilyLedgerTheme {
+                ReportContent(listOf(
+                    entry("e1", "2026-09-03", 12000).copy(type = EntryType.EXPENSE, isGift = false,
+                        categoryL1 = "养娃", categoryL2 = "奶粉"),
+                    entry("e2", "2026-09-08", 5600).copy(type = EntryType.EXPENSE, isGift = false,
+                        categoryL1 = "养娃", categoryL2 = "玩具"),
+                    entry("i1", "2026-09-05", 800000).copy(isGift = false, categoryL1 = "工资"),
+                    entry("i2", "2025-01-01", 999999).copy(isGift = false, categoryL1 = "工资")),
+                    YearMonth.of(2026, 9), {}, false, false, null, null, {}, {}, {})
+            }
+        }
+        compose.onNodeWithTag("report_section_categories").performClick()
+        compose.onNodeWithText("支出去向").assertIsDisplayed()
+        compose.onNodeWithTag("report_expense_category_0").performClick()
+        compose.onNodeWithText("合计 ¥ 176.00 · 2 笔").assertIsDisplayed()
+        compose.onNodeWithText("2026-09-08 · 支出 ¥ 56.00").assertIsDisplayed()
+        compose.onNodeWithText("养娃 · 玩具 · 家人 · 现金").assertIsDisplayed()
+        compose.onNodeWithText("2026-09-03 · 支出 ¥ 120.00").assertIsDisplayed()
+        compose.onNodeWithText("关闭").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("category_detail").fetchSemanticsNodes().isEmpty() }
+        compose.onNodeWithTag("report_income_source_0").performScrollTo().performClick()
+        compose.onNodeWithText("合计 ¥ 8000.00 · 1 笔").assertIsDisplayed()
+        compose.onNodeWithText("2026-09-05 · 收入 ¥ 8000.00").assertIsDisplayed()
+        compose.onNodeWithText("工资 · 家人 · 现金").assertIsDisplayed()
+        compose.onNodeWithText("关闭").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("category_detail").fetchSemanticsNodes().isEmpty() }
+    }
+
     @Test fun currentMonthDailyReportStartsToday() {
         val today = LocalDate.now()
         showReport(YearMonth.from(today))

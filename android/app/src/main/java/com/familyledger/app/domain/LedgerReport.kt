@@ -30,7 +30,8 @@ data class ReportRange(val start: LocalDate, val endExclusive: LocalDate, val pr
 
 data class PeriodTotal(val period: String, val income: Long, val expense: Long)
 data class LedgerReport(val period: String, val summary: Summary, val previousExpense: Long,
-    val members: List<CategoryTotal>, val trend: List<PeriodTotal>, val count: Int,
+    val members: List<CategoryTotal>, val incomeSources: List<CategoryTotal>,
+    val trend: List<PeriodTotal>, val count: Int,
     val range: ReportRange,
     val kind: ReportPeriod = ReportPeriod.MONTH) {
     val trendTitle: String get() = when (kind) {
@@ -48,6 +49,8 @@ data class LedgerReport(val period: String, val summary: Summary, val previousEx
         appendLine("${kind.previousLabel}支出：¥ ${Money.format(previousExpense)}")
         appendLine("\n支出分类")
         summary.categories.forEach { appendLine("${it.name}：¥ ${Money.format(it.amount)}") }
+        appendLine("\n收入来源")
+        incomeSources.forEach { appendLine("${it.name}：¥ ${Money.format(it.amount)}") }
         appendLine("\n成员支出")
         members.forEach { appendLine("${it.name}：¥ ${Money.format(it.amount)}") }
         appendLine("\n$trendTitle（收入 / 支出）")
@@ -80,5 +83,9 @@ fun buildReport(entries: List<LedgerEntry>, date: LocalDate, period: ReportPerio
         summarize(entries, start, end), summarize(entries, previous, start).expense,
         rows.filter { it.type == EntryType.EXPENSE }.groupBy { it.member }.map { (name, list) ->
             CategoryTotal(name, list.fold(0L) { sum, e -> Math.addExact(sum, e.amountMinor) })
-        }.sortedByDescending { it.amount }, trend, rows.count { it.type != EntryType.BALANCE_ADJUSTMENT }, period.range(date), period)
+        }.sortedByDescending { it.amount },
+        rows.filter { it.type == EntryType.INCOME }.groupBy { it.categoryL1 }.map { (name, list) ->
+            CategoryTotal(name, list.fold(0L) { sum, e -> Math.addExact(sum, e.amountMinor) })
+        }.sortedByDescending { it.amount },
+        trend, rows.count { it.type != EntryType.BALANCE_ADJUSTMENT }, period.range(date), period)
 }
