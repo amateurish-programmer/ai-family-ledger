@@ -32,6 +32,7 @@ data class SyncResult(val uploaded: Int, val downloaded: Int, val conflicts: Lis
 
 /** Manual, opt-in synchronization. The caller must block local edits while passing a snapshot. */
 class CloudService(context: Context) {
+    private val appContext = context.applicationContext
     private val config = context.applicationContext.getSharedPreferences("cloud_public", Context.MODE_PRIVATE)
     private val secrets = context.applicationContext.getSharedPreferences("cloud_encrypted", Context.MODE_PRIVATE)
 
@@ -406,7 +407,8 @@ class CloudService(context: Context) {
         val base = officialUrl(pair.first)
         require(path.startsWith("/") && !path.startsWith("//"))
         syncMetrics?.takeIf { it.version == version }?.let { it.requests++ }
-        val connection = URI(CloudEndpoint.requestUrl(base, path)).toURL().openConnection() as HttpURLConnection
+        val connection = URI(CloudEndpoint.requestUrl(base, path, CloudNetwork.prefersDirect(appContext)))
+            .toURL().openConnection() as HttpURLConnection
         val aiRequest = path.startsWith("/functions/")
         val deadline = System.nanoTime() + if (aiRequest) 120_000_000_000L else 90_000_000_000L
         try {

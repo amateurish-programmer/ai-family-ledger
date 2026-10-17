@@ -57,3 +57,6 @@ V1.1最终CI34088820861的91项JVM及46项Android35检查通过，包含2项日�
 
 
 V1.9.2 由固定 Pages 路径转发到原 Supabase app-updates 桶，保留原始清单和 APK 字节。OTA 不携带账号凭据；发布端仍直连原桶，内部大小、摘要、身份和签名检查保持不变。旧版首次用移动网络或手动覆盖修复。详见 [V1.9.2](V1.9.2.md)。
+
+
+V1.9.3 按当前默认网络选路：Wi-Fi/未知网络使用上述 Pages 清单；纯移动网络使用原 `https://xdgeybztysuvvwagqkvb.supabase.co/storage/v1/object/public/app-updates/latest.json`。下载也在新请求开始时选择对应固定根地址。两路使用同一相对路径、清单和 APK，身份与签名校验不变；没有在执行中的请求上自动换路重试。

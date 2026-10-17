@@ -20,3 +20,5 @@ wrangler pages deploy --project-name family-ledger-gateway --branch main --commi
 账号 `80ad827d555178e2c8af9a93c59beb2d`，Direct Upload 项目 `family-ledger-gateway`，生产分支 main。Wrangler 通过本机 OAuth 使用 account:read、pages:write 和用户/离线登录权限，凭据不上传。唯一实现 `worker.mjs` 复制为 Pages `_worker.js`；忽略生成目录。
 
 APK 仍由原 GitHub Actions 发布到 Supabase，原工具验证成功后更新清单及清理旧包。新发布无需重部署入口。免费额度或网络失败时，本机记录继续保留。首次升级方式和验收边界见 [V1.9.2](../../docs/V1.9.2.md)。
+
+V1.9.3 在 Wi-Fi 使用此入口；纯移动网络保留原 Supabase 直连。选择只影响新请求目标，不改变账号、项目身份或服务器权限。移动网络 Pages 新版大包复验超时而原地址成功，详见 [V1.9.3](../../docs/V1.9.3.md)。

@@ -34,7 +34,7 @@ data class AppUpdate(
     }
 
     fun isNewerThan(installedVersionCode: Long): Boolean = versionCode.toLong() > installedVersionCode
-    fun downloadUrl(): String = PUBLIC_ROOT + apkPath.split('/').joinToString("/") {
+    fun downloadUrl(preferDirect: Boolean = false): String = publicRoot(preferDirect) + apkPath.split('/').joinToString("/") {
         URLEncoder.encode(it, "UTF-8").replace("+", "%20")
     }
 
@@ -42,7 +42,10 @@ data class AppUpdate(
         const val PACKAGE_NAME = "com.familyledger.app"
         const val MAX_APK_BYTES = 50L * 1024 * 1024
         const val PUBLIC_ROOT = CloudEndpoint.TRANSPORT_URL + "/updates/"
+        private const val ORIGIN_ROOT = CloudEndpoint.URL + "/storage/v1/object/public/app-updates/"
         const val MANIFEST_URL = PUBLIC_ROOT + "latest.json"
+        private fun publicRoot(preferDirect: Boolean): String = if (preferDirect) ORIGIN_ROOT else PUBLIC_ROOT
+        fun manifestUrl(preferDirect: Boolean): String = publicRoot(preferDirect) + "latest.json"
     }
 }
 

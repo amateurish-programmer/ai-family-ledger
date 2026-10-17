@@ -6,12 +6,14 @@ object CloudEndpoint {
     const val TRANSPORT_URL = "https://family-ledger-gateway.pages.dev"
     const val PUBLIC_KEY = "sb_publishable_DMkKHBxMWwQ-j-hWvj-cuw_pE8R4NH-"
 
+    fun prefersDirect(cellular: Boolean, wifi: Boolean, vpn: Boolean): Boolean = cellular && !wifi && !vpn
+
     /** Keep stored project identity stable while changing only the HTTPS transport. */
-    fun requestUrl(projectUrl: String, path: String): String {
+    fun requestUrl(projectUrl: String, path: String, preferDirect: Boolean = false): String {
         require(projectUrl == URL) { "云项目不匹配，已停止请求" }
         require(path.startsWith("/") && !path.startsWith("//") &&
             path.none { it == '\\' || it == '#' || it.isISOControl() }) { "云端请求路径无效" }
-        return TRANSPORT_URL + path
+        return (if (preferDirect) URL else TRANSPORT_URL) + path
     }
 
     fun requireCompatible(previous: String?, hasCloudIdentity: Boolean) {

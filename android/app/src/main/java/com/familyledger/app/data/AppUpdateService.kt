@@ -31,7 +31,7 @@ class AppUpdateService(context: Context) {
 
     suspend fun check(): AppUpdate? = withContext(Dispatchers.IO) {
         val coroutine = currentCoroutineContext()
-        val connection = open(AppUpdate.MANIFEST_URL)
+        val connection = open(AppUpdate.manifestUrl(CloudNetwork.prefersDirect(context)))
         try {
             requireResponse(connection, manifest = true)
             val declaredLength = connection.contentLengthLong
@@ -69,7 +69,7 @@ class AppUpdateService(context: Context) {
             directory.listFiles()?.filter { it.name.endsWith(".part") || it.name.endsWith(".apk") }?.forEach { it.delete() }
             val destination = File(directory, "update-${update.versionCode}-${update.sha256.take(12)}.apk")
             val part = File(directory, "${UUID.randomUUID()}.part")
-            val connection = open(update.downloadUrl())
+            val connection = open(update.downloadUrl(CloudNetwork.prefersDirect(context)))
             try {
                 requireResponse(connection)
                 val declaredLength = connection.contentLengthLong
