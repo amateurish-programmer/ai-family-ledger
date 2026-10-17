@@ -26,9 +26,10 @@ class QuickReceiptUiTest {
     @After fun close() { compose.runOnIdle { store.clear() }; database.close() }
 
     private fun show(count: Int) {
-        val drafts = (1..count).map { LedgerEntry("receipt-$it", EntryType.EXPENSE, "2026-10-17", 8600L,
+        val drafts = (1..count).map { LedgerEntry(java.util.UUID(0L, it.toLong()).toString(), EntryType.EXPENSE, "2026-10-17", 8600L,
             "食品酒水", account = "现金", member = "本人", recordedBy = "本人") }
         runBlocking { repository.saveChatDrafts("local", drafts) }
+        assertEquals(drafts, runBlocking { repository.chatDrafts("local") })
         compose.runOnIdle { model = LedgerViewModel(repository); store.put("receipt-test", model) }
         compose.setContent { FamilyLedgerTheme {
             val state by model.state.collectAsState()
