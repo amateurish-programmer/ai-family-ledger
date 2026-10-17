@@ -9,6 +9,8 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.*
@@ -45,8 +47,9 @@ internal fun chatSendEnabled(state: LedgerState): Boolean =
         key(draft.id) { EntryEditor(draft, state.busy, snackbar, onClose = { onEditingChange(null) }, onSave = { model.updateQuickDraft(it); onEditingChange(null) }) }
         return
     }
+    val style = LocalLedgerStyle.current
     Column(Modifier.fillMaxSize().imePadding()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically,
+        Row(Modifier.fillMaxWidth().padding(horizontal = style.pagePadding, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             ProfileBadge(IdentityProfile.familyIcons.first { it.id == (state.cloudStatus?.familyIcon ?: "home") })
             Column(Modifier.weight(1f)) {
@@ -63,9 +66,9 @@ internal fun chatSendEnabled(state: LedgerState): Boolean =
         ChatTimeline(state.chatMessages, conversationKey, state.localRole, state.localAvatar,
             modifier = Modifier.weight(1f).fillMaxWidth(), emptyContent = {
                 Column(Modifier.fillMaxWidth().padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    FamilyIllustration(Modifier.align(Alignment.CenterHorizontally))
-                    Text("收支随手记，\n家里的账一起理。", style = MaterialTheme.typography.headlineMedium)
-                    Text("说说今天的收支，或聊聊家庭财务。\n每一笔记录，都由你确认后保存。", color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    if (!style.compact) FamilyIllustration(Modifier.align(Alignment.CenterHorizontally))
+                    Text(if (style.compact) "记下收支，看清生活。" else if (style.journal) "一笔一页，\n收藏家的日常。" else "收支随手记，\n家里的账一起理。", style = MaterialTheme.typography.headlineMedium)
+                    Text("记录收支、查询账目，或聊聊家庭财务。\n每一笔记录，都由你确认后保存。", color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(2.dp))
                     listOf("帮我分析一下家庭财务", "家里的开支可以怎样调整？").forEach { example ->
@@ -83,14 +86,14 @@ internal fun chatSendEnabled(state: LedgerState): Boolean =
                 }
             }
             items(state.quickDrafts.asReversed(), key = { "chat:draft:${it.id}" }) { e ->
-                Card(Modifier.fillMaxWidth().animateContentSize(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                LedgerPanel(Modifier.fillMaxWidth().animateContentSize(), accent = true) {
+                        Text("待确认 · 收支小票", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             IconBadge(if (e.type == EntryType.INCOME) Icons.Outlined.SouthWest else Icons.Outlined.NorthEast, sage = e.type == EntryType.INCOME)
                             Column(Modifier.weight(1f)) {
                                 Text(e.type.label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text("¥ ${Money.format(e.amountMinor)}", style = MaterialTheme.typography.headlineSmall,
+                                    fontFamily = style.moneyFontFamily,
                                     color = if (e.type == EntryType.INCOME) LedgerSage else MaterialTheme.colorScheme.onSurface)
                             }
                         }
@@ -103,7 +106,6 @@ internal fun chatSendEnabled(state: LedgerState): Boolean =
                             TextButton(onClick = { model.removeQuickDraft(e.id) }, enabled = !state.busy) { Text("移除", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                             FilledTonalButton(onClick = { onEditingChange(e.id) }, enabled = !state.busy) { Text("修改记录") }
                         }
-                    }
                 }
             }
             if (state.quickDrafts.isNotEmpty()) item(key = "chat:draft-heading") {
@@ -127,17 +129,17 @@ internal fun chatSendEnabled(state: LedgerState): Boolean =
                 Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(state.chatInput, model::updateChatInput, modifier = Modifier.weight(1f), minLines = 1, maxLines = 5,
                         placeholder = { Text("记收支，聊聊家庭财务…", style = MaterialTheme.typography.bodyMedium) },
-                        shape = RoundedCornerShape(24.dp), colors = OutlinedTextFieldDefaults.colors(
+                        shape = MaterialTheme.shapes.large, colors = OutlinedTextFieldDefaults.colors(
                             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
                             unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant),
                         enabled = chatInputEnabled(state))
                     FilledIconButton(onClick = model::sendChat,
-                        modifier = Modifier.size(56.dp),
+                        modifier = Modifier.size(56.dp), shape = MaterialTheme.shapes.large,
                         enabled = chatSendEnabled(state)) {
                         Icon(Icons.AutoMirrored.Outlined.Send, contentDescription = "发送")
                     }
                 }
-                Text(if (state.quickDrafts.isNotEmpty()) "先确认或移除上方记录，再继续记账。" else "AI 处理本轮文字与收支汇总；分析基于本机账本。",
+                Text(if (state.quickDrafts.isNotEmpty()) "先确认或移除上方记录，再继续记账。" else "说说收支，也可以问问家里的账。",
                     Modifier.padding(top = 8.dp, start = 6.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -165,6 +167,7 @@ internal fun chatSendEnabled(state: LedgerState): Boolean =
     val restoredAnchor = remember(conversationKey) { savedAnchorKey to savedAnchorOffset }
     var positionRestored by remember(conversationKey) { mutableStateOf(false) }
     val nearLatestOffset = with(LocalDensity.current) { 96.dp.roundToPx() }
+    val style = LocalLedgerStyle.current
     // Sample before this message changes the measured indices. Busy/status changes never scroll.
     val wasNearLatest = remember(latest?.id) {
         listState.firstVisibleItemIndex <= 1 && listState.firstVisibleItemScrollOffset <= nearLatestOffset
@@ -201,18 +204,20 @@ internal fun chatSendEnabled(state: LedgerState): Boolean =
         }
     }
     LazyColumn(modifier.testTag("chat_timeline"), state = listState, reverseLayout = messages.isNotEmpty(),
-        contentPadding = PaddingValues(horizontal = 22.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        contentPadding = PaddingValues(horizontal = style.pagePadding, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(style.sectionSpacing)) {
         latestContent()
         if (messages.isEmpty()) item(key = "chat:empty") { emptyContent() }
         items(visibleMessages, key = { "chat:message:${it.id}" }) { message ->
             Column(Modifier.fillMaxWidth(), horizontalAlignment = if (message.user) Alignment.End else Alignment.Start,
                 verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(if (message.user) "${IdentityProfile.avatars.first { it.id == localAvatar }.symbol} $localRole" else "账本助手",
+                Text(if (message.user) localRole else "账本助手",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Surface(color = if (message.user) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLowest,
-                    shape = if (message.user) RoundedCornerShape(20.dp, 5.dp, 20.dp, 20.dp) else RoundedCornerShape(5.dp, 20.dp, 20.dp, 20.dp),
+                Surface(color = if (message.user) MaterialTheme.colorScheme.primaryContainer else if (style.compact) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLowest,
+                    shape = if (style.journal || style.compact) MaterialTheme.shapes.medium else if (message.user) RoundedCornerShape(20.dp, 5.dp, 20.dp, 20.dp) else RoundedCornerShape(5.dp, 20.dp, 20.dp, 20.dp),
+                    border = if (style.journal) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null,
                     modifier = Modifier.widthIn(max = 600.dp).fillMaxWidth(if (message.user) .9f else 1f).animateContentSize()) {
-                    SelectionContainer { Text(message.text, Modifier.padding(17.dp), style = MaterialTheme.typography.bodyLarge) }
+                    if (message.user) SelectionContainer { Text(message.text, Modifier.padding(16.dp), style = MaterialTheme.typography.bodyLarge) }
+                    else AssistantMessage(message.text, Modifier.padding(if (style.compact) 2.dp else 16.dp))
                 }
             }
         }

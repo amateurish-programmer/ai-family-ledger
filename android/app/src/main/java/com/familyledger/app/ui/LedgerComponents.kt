@@ -2,10 +2,11 @@ package com.familyledger.app.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -14,18 +15,59 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import com.familyledger.app.data.ProfileChoice
+import com.familyledger.app.data.AppTheme
+
+/** The shared surface changes material, corners and decoration, not only accent colour. */
+@Composable internal fun LedgerPanel(modifier: Modifier = Modifier, accent: Boolean = false,
+    contentPadding: Dp = 18.dp, contentSpacing: Dp = 12.dp, content: @Composable ColumnScope.() -> Unit) {
+    val style = LocalLedgerStyle.current
+    val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(style.cardRadius)
+    val fill = if (accent && style.theme == AppTheme.WARM) Brush.linearGradient(listOf(colors.primaryContainer, colors.surfaceContainerLowest))
+        else Brush.linearGradient(listOf(colors.surfaceContainerLowest, colors.surfaceContainerLowest))
+    Box(modifier.fillMaxWidth()) {
+        Surface(shape = shape, color = Color.Transparent,
+            border = if (style.journal || style.compact) BorderStroke(1.dp, colors.outlineVariant) else null) {
+            Column(Modifier.fillMaxWidth().clip(shape).background(fill).drawBehind {
+                if (style.journal) {
+                    val step = 22.dp.toPx()
+                    var y = step
+                    while (y < size.height) {
+                        drawLine(colors.outlineVariant.copy(alpha = .23f), Offset(0f, y), Offset(size.width, y), 1.dp.toPx())
+                        y += step
+                    }
+                }
+            }.padding(contentPadding), verticalArrangement = Arrangement.spacedBy(contentSpacing), content = content)
+        }
+        if (style.journal && accent) Box(Modifier.align(Alignment.TopCenter).offset(y = (-5).dp)
+            .size(56.dp, 10.dp).background(colors.secondaryContainer.copy(alpha = .85f)))
+    }
+}
 
 @Composable internal fun ProfileBadge(choice: ProfileChoice, modifier: Modifier = Modifier) {
-    Box(modifier.size(46.dp).background(MaterialTheme.colorScheme.secondaryContainer, CircleShape)
+    val style = LocalLedgerStyle.current
+    Box(modifier.size(style.iconSize).background(MaterialTheme.colorScheme.primaryContainer, if (style.journal) RoundedCornerShape(8.dp) else CircleShape)
         .semantics { contentDescription = choice.label }, contentAlignment = Alignment.Center) {
-        Text(choice.symbol, style = MaterialTheme.typography.headlineSmall)
+        Icon(when (choice.id) {
+            "home" -> Icons.Outlined.Home; "heart" -> Icons.Outlined.FavoriteBorder
+            "tree" -> Icons.Outlined.Park; "sun" -> Icons.Outlined.LightMode
+            "cat" -> Icons.Outlined.Pets; "child" -> Icons.Outlined.ChildCare
+            "elder" -> Icons.Outlined.Elderly; "woman" -> Icons.Outlined.Face3
+            "man" -> Icons.Outlined.Face; else -> Icons.Outlined.PersonOutline
+        }, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
     }
 }
 
@@ -34,7 +76,7 @@ import com.familyledger.app.data.ProfileChoice
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(title, style = MaterialTheme.typography.headlineLarge, modifier = Modifier.align(Alignment.CenterVertically))
+                Text(title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.align(Alignment.CenterVertically))
                 if (syncing) Box(Modifier.align(Alignment.CenterVertically)) { SyncStatus(true) }
             }
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -50,8 +92,30 @@ import com.familyledger.app.data.ProfileChoice
     }
 }
 
+/** Stack the exact amount when large text or a narrow screen would squeeze the name. */
+@Composable internal fun RankedAmount(name: String, amount: String, modifier: Modifier = Modifier,
+    color: Color = MaterialTheme.colorScheme.onSurface) {
+    val style = LocalLedgerStyle.current
+    val scale = LocalDensity.current.fontScale
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val availableWidth = maxWidth
+        if (availableWidth < 280.dp || scale >= 1.3f) {
+            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text(name, style = MaterialTheme.typography.titleMedium)
+                Text(amount, fontFamily = style.moneyFontFamily, style = MaterialTheme.typography.titleMedium, color = color)
+            }
+        } else Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(name, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+            Text(amount, Modifier.widthIn(max = availableWidth / 2), fontFamily = style.moneyFontFamily,
+                style = MaterialTheme.typography.titleMedium, color = color)
+        }
+    }
+}
+
 @Composable internal fun IconBadge(icon: ImageVector, modifier: Modifier = Modifier, sage: Boolean = false) {
-    Box(modifier.size(46.dp).background(if (sage) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.primaryContainer, CircleShape), contentAlignment = Alignment.Center) {
+    val style = LocalLedgerStyle.current
+    Box(modifier.size(style.iconSize).background(if (style.compact) Color.Transparent else if (sage) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.primaryContainer,
+        if (style.journal) RoundedCornerShape(8.dp) else CircleShape), contentAlignment = Alignment.Center) {
         Icon(icon, contentDescription = null, tint = if (sage) LedgerSage else MaterialTheme.colorScheme.primary, modifier = Modifier.size(23.dp))
     }
 }
@@ -67,6 +131,7 @@ import com.familyledger.app.data.ProfileChoice
 
 /** Purely decorative vector artwork; no embedded words or customer information. */
 @Composable internal fun FamilyIllustration(modifier: Modifier = Modifier) {
+    if (LocalLedgerStyle.current.compact) return
     Canvas(modifier.size(width = 190.dp, height = 126.dp)) {
         val sx = size.width / 190f
         val sy = size.height / 126f

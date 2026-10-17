@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -35,9 +36,16 @@ import kotlin.math.floor
 
 @Composable
 fun MonthlyTrendChart(entries: List<LedgerEntry>, endMonth: YearMonth) {
+    val style = LocalLedgerStyle.current
     var months by rememberSaveable { mutableIntStateOf(6) }
     val points = remember(entries, endMonth, months) { buildMonthlyTrend(entries, endMonth, months) }
-    var viewport by remember(endMonth, months) { mutableStateOf(TrendViewport.full(months)) }
+    val viewportSaver = remember(endMonth, months) {
+        listSaver<TrendViewport, Any>(save = { listOf(endMonth.toString(), it.pointCount, it.start, it.span) }, restore = {
+            if (it[0] != endMonth.toString() || it[1] != months) TrendViewport.full(months)
+            else TrendViewport.full(months).zoom((months - 1f) / (it[3] as Float), 0f).pan(it[2] as Float)
+        })
+    }
+    var viewport by rememberSaveable(endMonth.toString(), months, stateSaver = viewportSaver) { mutableStateOf(TrendViewport.full(months)) }
     var selected by rememberSaveable(endMonth.toString(), months) { mutableIntStateOf(months - 1) }
     val incomeColor = LedgerSage
     val expenseColor = MaterialTheme.colorScheme.primary
@@ -53,7 +61,7 @@ fun MonthlyTrendChart(entries: List<LedgerEntry>, endMonth: YearMonth) {
     }
 
     Column(Modifier.fillMaxWidth().testTag("monthly_trend"), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        SectionHeading("收支趋势", "截至 ${endMonth.year} 年 ${endMonth.monthValue} 月 · 按月汇总")
+        SectionHeading("收支趋势", "截至 ${endMonth.year} 年 ${endMonth.monthValue} 月")
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             listOf(6 to "近六个月", 12 to "近一年").forEach { (count, label) ->
                 FilterChip(selected = months == count, onClick = { months = count }, label = { Text(label) },
@@ -165,11 +173,11 @@ fun MonthlyTrendChart(entries: List<LedgerEntry>, endMonth: YearMonth) {
                     TextButton(onClick = { selectMonth(selected + 1) }, enabled = selected < points.lastIndex,
                         modifier = Modifier.testTag("trend_next_month"), contentPadding = PaddingValues(horizontal = 4.dp)) { Text("下个月") }
                 }
-                Text("收入 ¥ ${Money.format(selectedPoint.income)}", color = incomeColor, style = MaterialTheme.typography.bodyMedium)
-                Text("支出 ¥ ${Money.format(selectedPoint.expense)}", color = expenseColor, style = MaterialTheme.typography.bodyMedium)
+                Text("收入 ¥ ${Money.format(selectedPoint.income)}", color = incomeColor, fontFamily = style.moneyFontFamily, style = MaterialTheme.typography.bodyMedium)
+                Text("支出 ¥ ${Money.format(selectedPoint.expense)}", color = expenseColor, fontFamily = style.moneyFontFamily, style = MaterialTheme.typography.bodyMedium)
             }
         }
-        Text("左右拖动平移 · 双指缩放 · 点击月份查看金额\n上下滑动继续浏览；零值表示本机暂无对应收支。图表视窗不改变本期统计、导出或 AI 解读范围。",
+        Text("拖动平移 · 双指缩放 · 点选月份；图表视窗不改变报告期间。",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

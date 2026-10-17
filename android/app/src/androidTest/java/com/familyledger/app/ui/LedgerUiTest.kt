@@ -16,6 +16,29 @@ import java.time.YearMonth
 class LedgerUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
+    @Test fun liveThemeSwitchKeepsChatInputAndRestoresSelectedTheme() {
+        val prefs = compose.activity.getSharedPreferences("appearance", android.content.Context.MODE_PRIVATE)
+        val previous = prefs.getString("theme", null)
+        try {
+            awaitText("账本助手")
+            compose.onNodeWithText("记收支，聊聊家庭财务…").performTextInput("准备查询家庭开支")
+            compose.onNodeWithText("设置").performClick()
+            compose.onNodeWithText("外观主题").performScrollTo().performClick()
+            compose.onNodeWithTag("theme_journal").performScrollTo().performClick().assertIsSelected()
+            compose.onNodeWithText("记账").performClick()
+            compose.onNodeWithText("准备查询家庭开支").assertExists()
+            compose.onNodeWithText("设置").performClick()
+            compose.onNodeWithTag("theme_journal").assertIsSelected()
+            compose.activityRule.scenario.recreate()
+            compose.onNodeWithTag("theme_journal").assertIsSelected()
+            Assert.assertEquals("journal", prefs.getString("theme", null))
+            compose.onNodeWithText("记账").performClick()
+            compose.onNodeWithText("准备查询家庭开支").assertExists()
+        } finally {
+            if (previous == null) prefs.edit().remove("theme").commit() else prefs.edit().putString("theme", previous).commit()
+        }
+    }
+
     @Test fun singleTextEntryAndEditableLocalRole() {
         awaitText("账本助手")
         compose.onNodeWithContentDescription("发送").assertExists()
@@ -23,6 +46,7 @@ class LedgerUiTest {
         compose.onNodeWithContentDescription("记一笔").assertDoesNotExist()
         compose.onNodeWithText("记收支，聊聊家庭财务…").performTextInput("午饭 36.80 元")
         compose.onNodeWithText("设置").performClick()
+        compose.onNodeWithText("角色设置").performClick()
         compose.onNodeWithText("角色名称").performScrollTo().performTextReplacement("老公")
         compose.onNodeWithText("🐱 小猫").performScrollTo().performClick()
         compose.onNodeWithText("保存角色").performScrollTo().performClick()
@@ -43,9 +67,13 @@ class LedgerUiTest {
         compose.onNodeWithText("周报").assertIsSelected()
         screenshot("ledger-weekly.png")
         compose.onNodeWithText("设置", useUnmergedTree = true).performClick()
+        compose.onNodeWithContentDescription("返回设置").performClick()
         compose.waitForIdle()
         screenshot("ledger-settings.png")
+        compose.onNodeWithText("应用更新").performScrollTo().performClick()
         compose.onNodeWithText("检查更新").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("返回设置").performClick()
+        compose.onNodeWithText("角色设置").performClick()
         compose.onNodeWithText("管理家庭账号与同步").performScrollTo().performClick()
         compose.onNodeWithText("忘记密码？").performScrollTo().performClick()
         compose.onNodeWithText("找回密码").assertExists()

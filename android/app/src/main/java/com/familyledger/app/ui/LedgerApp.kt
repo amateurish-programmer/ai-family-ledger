@@ -20,12 +20,14 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.familyledger.app.domain.*
 import com.familyledger.app.data.IdentityProfile
+import com.familyledger.app.data.AppTheme
 import java.time.YearMonth
 
 @Composable fun LedgerApp(model: LedgerViewModel) {
@@ -96,19 +98,7 @@ import java.time.YearMonth
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
-                listOf("记账", "账本", "报表", "设置").forEachIndexed { index, title ->
-                    NavigationBarItem(selected = tab == index, onClick = { tab = index },
-                        icon = { Icon(when (index) {
-                            0 -> Icons.Outlined.ChatBubbleOutline
-                            1 -> Icons.AutoMirrored.Outlined.ReceiptLong
-                            2 -> Icons.Outlined.BarChart
-                            else -> Icons.Outlined.Settings
-                        }, contentDescription = null) }, label = { Text(title) },
-                        colors = NavigationBarItemDefaults.colors(indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                            selectedIconColor = MaterialTheme.colorScheme.primary, selectedTextColor = MaterialTheme.colorScheme.primary))
-                }
-            }
+            LedgerNavigationBar(tab) { tab = it }
         }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
@@ -118,9 +108,34 @@ import java.time.YearMonth
                     QuickEntryScreen(model, state, snackbar, draftEditorKey, onEditingChange = { draftEditorKey = it },
                         conversationKey = state.conversationKey)
                 }
-                1 -> LedgerScreen(state, month, { monthText = it.toString() }, { editorKey = it.id }, model::delete, model::syncCloud)
-                2 -> ReportsScreen(state.entries, month, { monthText = it.toString() }, model, state, onOrganizeGifts = model::openGiftHistory)
-                3 -> SettingsScreen(model, state, focusUpdates, onUpdatesFocused = { focusUpdates = false })
+                1 -> chatScreenState.SaveableStateProvider("ledger") {
+                    LedgerScreen(state, month, { monthText = it.toString() }, { editorKey = it.id }, model::delete, model::syncCloud)
+                }
+                2 -> chatScreenState.SaveableStateProvider("reports") {
+                    ReportsScreen(state.entries, month, { monthText = it.toString() }, model, state, onOrganizeGifts = model::openGiftHistory)
+                }
+                3 -> chatScreenState.SaveableStateProvider("settings") {
+                    SettingsScreen(model, state, focusUpdates, onUpdatesFocused = { focusUpdates = false })
+                }
+            }
+        }
+    }
+}
+
+@Composable internal fun LedgerNavigationBar(tab: Int, onTab: (Int) -> Unit) {
+    Column {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .6f))
+        NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest, tonalElevation = 0.dp) {
+            listOf("记账", "账本", "报表", "设置").forEachIndexed { index, title ->
+                NavigationBarItem(selected = tab == index, onClick = { onTab(index) },
+                    icon = { Icon(when (index) {
+                        0 -> Icons.Outlined.ChatBubbleOutline
+                        1 -> Icons.AutoMirrored.Outlined.ReceiptLong
+                        2 -> Icons.Outlined.BarChart
+                        else -> Icons.Outlined.Settings
+                    }, contentDescription = null) }, label = { Text(title) },
+                    colors = NavigationBarItemDefaults.colors(indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                        selectedIconColor = MaterialTheme.colorScheme.primary, selectedTextColor = MaterialTheme.colorScheme.primary))
             }
         }
     }
@@ -140,21 +155,22 @@ internal fun startupUpdateBlocked(state: LedgerState, tab: Int, editorKey: Strin
     val entries = remember(state.entries, month) { state.entries.filter { it.occurredOn >= start.toString() && it.occurredOn < end.toString() }.sortedByDescending { it.occurredOn } }
     var selected by remember { mutableStateOf<LedgerEntry?>(null) }
     var deleteEntry by remember { mutableStateOf<LedgerEntry?>(null) }
+    val style = LocalLedgerStyle.current
 
     val canRefresh = !state.busy && !state.loading && !state.documentPickerOpen && !state.spreadsheetExportReady
     val pullState = rememberPullToRefreshState()
     Box(Modifier.fillMaxSize().pullToRefresh(state = pullState, isRefreshing = state.syncing,
         enabled = canRefresh, onRefresh = { if (canRefresh) onRefresh() })) {
-    LazyColumn(Modifier.fillMaxSize().testTag("ledger_list"), contentPadding = PaddingValues(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 32.dp)) {
+    LazyColumn(Modifier.fillMaxSize().testTag("ledger_list"), contentPadding = PaddingValues(start = style.pagePadding, end = style.pagePadding, top = 20.dp, bottom = 32.dp)) {
         item {
             PageHeading("家庭账本", state.cloudStatus?.familyName?.let { "$it · 下拉刷新" } ?: "本机账本 · 下拉同步家庭账本", syncing = state.syncing) {
                 ProfileBadge(IdentityProfile.familyIcons.first { it.id == (state.cloudStatus?.familyIcon ?: "home") })
             }
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(style.sectionSpacing))
             PeriodSelector("${month.year} 年 ${month.monthValue} 月", { onMonth(month.minusMonths(1)) }, { onMonth(month.plusMonths(1)) })
             Spacer(Modifier.height(16.dp))
             SummaryBlock(summary)
-            Spacer(Modifier.height(30.dp))
+            Spacer(Modifier.height(style.sectionSpacing))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("收支明细", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text("${entries.size} 笔", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -180,16 +196,25 @@ internal fun startupUpdateBlocked(state: LedgerState, tab: Int, editorKey: Strin
     }
     }
     selected?.let { entry ->
-        AlertDialog(onDismissRequest = { selected = null }, title = { Text("${entry.type.label} ¥${Money.format(entry.amountMinor)}") },
-            text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        ModalBottomSheet(onDismissRequest = { selected = null }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text(entry.type.label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("¥ ${Money.format(entry.amountMinor)}", style = MaterialTheme.typography.headlineLarge,
+                    fontFamily = style.moneyFontFamily, color = if (entry.type == EntryType.INCOME) LedgerSage else MaterialTheme.colorScheme.onSurface)
+                HorizontalDivider()
                 Text("${entry.occurredOn} · ${entry.categoryL1} ${entry.categoryL2}")
-                Text("账户：${entry.account}"); Text("成员：${entry.member} · 记账人：${entry.recordedBy}")
+                Text("账户：${entry.account}")
+                Text("成员：${entry.member} · 记账人：${entry.recordedBy}")
+                if (entry.isGift) Text("人情往来：${entry.counterparty.ifBlank { "待补全对象" }}")
                 if (entry.merchant.isNotBlank()) Text("商家：${entry.merchant}")
                 if (entry.project.isNotBlank()) Text("项目：${entry.project}")
                 if (entry.note.isNotBlank()) Text(entry.note)
-            } },
-            confirmButton = { TextButton(onClick = { selected = null; onEdit(entry) }, enabled = !state.busy) { Text("编辑") } },
-            dismissButton = { TextButton(onClick = { selected = null; deleteEntry = entry }, enabled = !state.busy) { Text("删除", color = MaterialTheme.colorScheme.error) } })
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(onClick = { selected = null; deleteEntry = entry }, enabled = !state.busy, modifier = Modifier.weight(1f)) { Text("删除", color = MaterialTheme.colorScheme.error) }
+                    Button(onClick = { selected = null; onEdit(entry) }, enabled = !state.busy, modifier = Modifier.weight(1f)) { Text("编辑") }
+                }
+            }
+        }
     }
     deleteEntry?.let { entry ->
         AlertDialog(onDismissRequest = { deleteEntry = null }, title = { Text("删除这笔记录？") },
@@ -200,7 +225,12 @@ internal fun startupUpdateBlocked(state: LedgerState, tab: Int, editorKey: Strin
 }
 
 @Composable private fun EntryRow(entry: LedgerEntry, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 15.dp), verticalAlignment = Alignment.CenterVertically,
+    val style = LocalLedgerStyle.current
+    val fontScale = LocalDensity.current.fontScale
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+    val stack = maxWidth < 300.dp || fontScale >= 1.3f
+    val amount = "${when(entry.type) { EntryType.INCOME -> "+"; EntryType.EXPENSE -> "−"; else -> "调整 " }}${Money.format(entry.amountMinor)}"
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = style.rowPadding), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         IconBadge(when (entry.type) {
             EntryType.INCOME -> Icons.Outlined.SouthWest
@@ -219,43 +249,48 @@ internal fun startupUpdateBlocked(state: LedgerState, tab: Int, editorKey: Strin
                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (entry.note.isNotBlank()) Text(entry.note, style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (stack) Text(amount, style = MaterialTheme.typography.titleMedium, fontFamily = style.moneyFontFamily,
+                color = if (entry.type == EntryType.INCOME) LedgerSage else MaterialTheme.colorScheme.onSurface)
         }
-        Text("${when(entry.type) { EntryType.INCOME -> "+"; EntryType.EXPENSE -> "−"; else -> "调整 " }}${Money.format(entry.amountMinor)}",
+        if (!stack) Text(amount,
             modifier = Modifier.widthIn(max = 152.dp), style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold, color = if (entry.type == EntryType.INCOME) LedgerSage else MaterialTheme.colorScheme.onSurface)
+            fontWeight = FontWeight.SemiBold, fontFamily = style.moneyFontFamily,
+            color = if (entry.type == EntryType.INCOME) LedgerSage else MaterialTheme.colorScheme.onSurface)
+    }
     }
 }
 
 @Composable internal fun PeriodSelector(label: String, previous: () -> Unit, next: () -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = RoundedCornerShape(18.dp)) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.medium) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             IconButton(onClick = previous) { Icon(Icons.Outlined.ChevronLeft, "上一期") }
-            Crossfade(targetState = label, label = "period") { Text(it, style = MaterialTheme.typography.titleMedium) }
+            Crossfade(targetState = label, label = "period", modifier = Modifier.weight(1f)) {
+                Text(it, style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            }
             IconButton(onClick = next) { Icon(Icons.Outlined.ChevronRight, "下一期") }
         }
     }
 }
 
 @Composable internal fun SummaryBlock(summary: Summary) {
-    Surface(color = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-        shape = MaterialTheme.shapes.large) {
-        Column(Modifier.fillMaxWidth().padding(22.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    val style = LocalLedgerStyle.current
+    LedgerPanel(accent = true, contentPadding = if (style.compact) 16.dp else 20.dp) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("本期收支结余", style = MaterialTheme.typography.labelLarge)
                 Icon(Icons.Outlined.AccountBalanceWallet, null, Modifier.size(20.dp), tint = LedgerSage)
             }
-            Text("¥ ${Money.format(summary.balance)}", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+            Text("¥ ${Money.format(summary.balance)}", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold,
+                fontFamily = style.moneyFontFamily, fontStyle = if (style.journal) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal)
             HorizontalDivider(color = LedgerSage.copy(alpha = .16f))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text("收入", style = MaterialTheme.typography.labelMedium)
-                    Text("¥ ${Money.format(summary.income)}", style = MaterialTheme.typography.titleMedium)
+                    Text("¥ ${Money.format(summary.income)}", style = MaterialTheme.typography.titleMedium, fontFamily = style.moneyFontFamily, color = LedgerSage)
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text("支出", style = MaterialTheme.typography.labelMedium)
-                    Text("¥ ${Money.format(summary.expense)}", style = MaterialTheme.typography.titleMedium)
+                    Text("¥ ${Money.format(summary.expense)}", style = MaterialTheme.typography.titleMedium, fontFamily = style.moneyFontFamily, color = MaterialTheme.colorScheme.primary)
                 }
             }
-        }
     }
 }

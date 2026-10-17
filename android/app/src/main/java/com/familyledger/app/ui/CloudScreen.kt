@@ -26,6 +26,7 @@ import kotlinx.coroutines.delay
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable fun CloudScreen(model: LedgerViewModel, state: LedgerState, snackbar: SnackbarHostState) {
     val status = state.cloudStatus
+    val style = LocalLedgerStyle.current
     var email by rememberSaveable { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var resetMode by remember { mutableStateOf(false) }
@@ -53,26 +54,26 @@ import kotlinx.coroutines.delay
     BackHandler(enabled = !state.busy) { if (resetMode) closeReset() else model.closeCloud() }
     Scaffold(topBar = { TopAppBar(title = {
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("家庭与云端"); SyncStatus(state.syncing)
+            Text("家庭账号与同步"); SyncStatus(state.syncing)
         }
     }, navigationIcon = {
         IconButton(onClick = { if (resetMode) closeReset() else model.closeCloud() }, enabled = !state.busy) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回") }
     }) }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(Modifier.fillMaxSize().padding(padding).imePadding().verticalScroll(rememberScrollState()).padding(horizontal = style.pagePadding, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(style.sectionSpacing)) {
             if (state.busy && !state.syncing) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
                 Text(state.operationStatus ?: "正在处理…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.large) {
-                Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Text(IdentityProfile.familyIcons.first { it.id == (status?.familyIcon ?: "home") }.symbol, style = MaterialTheme.typography.headlineLarge)
+            LedgerPanel(accent = true) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    ProfileBadge(IdentityProfile.familyIcons.firstOrNull { it.id == (status?.familyIcon ?: "home") } ?: IdentityProfile.familyIcons.first())
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(status?.familyName ?: "与家人共享账本", style = MaterialTheme.typography.titleLarge)
-                        Text("创建家庭，或使用家人的邀请码加入。", style = MaterialTheme.typography.bodySmall)
+                        Text(if (status?.familyId == null) "创建家庭，或使用家人的邀请码加入。" else "管理家庭资料、账号与账本同步。", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
-            if (status == null) Text("账号服务暂不可用，本机记账仍可使用。请查看错误提示后重试。")
+            if (status == null) Text("账号服务暂不可用。已保存账目可离线查看和编辑，请查看错误提示后重试。")
             if (status?.email == null) {
                 SectionHeading(if (resetMode) "找回密码" else "登录家庭账号", if (resetMode) "通过邮箱验证码设置新密码" else "登录后即可记账与同步")
                 OutlinedTextField(email, { email = it }, label = { Text("邮箱") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email), singleLine = true, enabled = !state.busy, modifier = Modifier.fillMaxWidth())
