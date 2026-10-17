@@ -14,6 +14,8 @@
 - 更新服务器在新版发布验证成功后清理旧安装包，仅保留最新版本。
 - [V1.9.0 公开 APK](https://xdgeybztysuvvwagqkvb.supabase.co/storage/v1/object/public/app-updates/releases/22/ai-family-ledger-v1.9.0.apk) · [V1.9.0 验证记录](docs/V1.9.md)
 
+V1.9.0 已通过[正式发布流程](https://github.com/amateurish-programmer/ai-family-ledger/actions/runs/39000605636)：160 项基础测试、76 项模拟器测试及 46 项发布测试通过。公开安装包与构建产物一致，沿用原签名；Supabase 已清理 11 个旧安装包。实体手机验收未执行。
+
 ## 版本记录
 
 - **V1.9.0**：四页改版、三套主题与本机外观偏好、分区报告与分层设置。

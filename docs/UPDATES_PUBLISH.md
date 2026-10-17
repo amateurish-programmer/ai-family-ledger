@@ -54,6 +54,8 @@ Storage 不提供这里所用对象API的跨对象事务，正确性依赖 CI �
 
 本地运行 `python -m unittest discover -s scripts -p test_publish_app_update.py`，使用临时合成 APK 与内存 Storage，并在网络传输层模拟 HTTP 错误，不读取生产配置或写生产。覆盖首次发布、发布顺序、重复运行、冲突、防降版、损坏读回、合同字段、唯一产物、大小上限、去敏、缓存和重定向限制。
 
+V1.9.0 增加旧包清理后共 46 项测试，另覆盖完整分页、批量删除、准确路径保护、当前版本保护、同版/更高版本冲突、并发清单变化、部分删除失败、最终重新列举和幂等补清理。清理未完成时退出码为 2，与尚未成功发布的失败区分；优先重跑原 CI 的失败发布任务，保持同一安装包和说明。
+
 本地测试不能替代 GitHub Secrets、真实 Storage权限、CDN读取、手机安装和覆盖保留数据的验收。实际云端发布结果须附对应运行记录，不能将本脚本验证通过等同于已发布。
 
 Storage缺失错误处理依据[官方错误码说明](https://supabase.com/docs/guides/storage/debugging/error-codes)；客户端可能收到HTTP400包裹的对象404，因此同时校验HTTP状态与结构化错误内容。
@@ -62,3 +64,7 @@ Storage缺失错误处理依据[官方错误码说明](https://supabase.com/docs
 ## 已部署记录（2026-09-07）
 
 [CI 34072537135](https://github.com/amateurish-programmer/ai-family-ledger/actions/runs/34072537135) 的三类前置检查与publish全部成功。22项发布回归通过。latest.json与code11版本APK已上线，另从本机匿名完整下载17,828,393字节，并与该次CI安装包逐项核对版本、大小及校验值一致。内部路径为ASCII，本机交付名仍为AI家庭账本-v0.11.0.apk。云端配置与手机验收边界见 [V0.11](V0.11.md)。
+
+## V1.9.0 最新版本保留验收（2026-10-17）
+
+[CI 39000605636](https://github.com/amateurish-programmer/ai-family-ledger/actions/runs/39000605636) 的构建、后端、模拟器与发布全部成功，46 项发布测试通过。生产日志报告删除 11 个旧 APK，并经最终列举确认规范更新路径中仅保留 `app-updates/releases/22/ai-family-ledger-v1.9.0.apk`。随后从本机匿名完整下载 18,045,361 字节，与本次 CI 安装包逐字节一致，latest 合同和签名核对通过。实体手机覆盖升级未在本次执行；详情见 [V1.9](V1.9.md)。历史部署记录保留，但被清理的旧 APK 直链不再作为可用下载入口。
