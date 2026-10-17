@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.lifecycle.ViewModelStore
 import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
@@ -100,12 +101,25 @@ class ThemeScreenshotsTest {
             compose.onNodeWithTag("report_section_members").performClick()
             compose.waitForIdle()
             compose.onNodeWithTag("report_list").performScrollToNode(hasText("家庭成员名称完整显示"))
+            val listBounds = compose.onNodeWithTag("report_list").fetchSemanticsNode().boundsInRoot
+            val tabBounds = compose.onNodeWithTag("report_section_members").fetchSemanticsNode().boundsInRoot
+            android.util.Log.i("AndroidRuntime", "theme-layout ${choice.storageId}: list=$listBounds; tab=$tabBounds; heading=${compose.onNodeWithText("成员支出").fetchSemanticsNode().boundsInRoot}")
+            org.junit.Assert.assertTrue("Report content overlaps section tabs: list=$listBounds, tab=$tabBounds", listBounds.top >= tabBounds.bottom)
             screenshot("theme-${choice.storageId}-narrow-large-report.png")
         }
     }
 
     private fun screenshot(name: String) {
         compose.waitForIdle()
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        if (name.contains("narrow-large-report")) {
+            val capture = java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "$name.compose.png")
+            val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
+            capture.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(
+                "sh -c 'run-as com.familyledger.app cat cache/$name.compose.png > /data/local/tmp/ledger-screens/$name.compose.png'"
+            ).let { ParcelFileDescriptor.AutoCloseInputStream(it).use { stream -> stream.readBytes() } }
+        }
         InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("screencap -p /data/local/tmp/ledger-screens/$name")
             .let { ParcelFileDescriptor.AutoCloseInputStream(it).use { stream -> stream.readBytes() } }
     }
