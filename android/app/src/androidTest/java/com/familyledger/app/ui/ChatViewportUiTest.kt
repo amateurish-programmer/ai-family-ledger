@@ -150,7 +150,13 @@ class ChatViewportUiTest {
     private fun assertRegionEquals(before: PixelMap, after: PixelMap, bounds: Rect, label: String) {
         for (y in ceil(bounds.top).toInt() until floor(bounds.bottom).toInt()) {
             for (x in ceil(bounds.left).toInt() until floor(bounds.right).toInt()) {
-                assertEquals("$label changed at ($x, $y)", before[x, y], after[x, y])
+                val a = before[x, y]
+                val b = after[x, y]
+                val error = maxOf(kotlin.math.abs(a.red - b.red), kotlin.math.abs(a.green - b.green),
+                    kotlin.math.abs(a.blue - b.blue), kotlin.math.abs(a.alpha - b.alpha))
+                // GPU text antialiasing may vary by one 8-bit level between captures.
+                // Two levels tolerate rounding, while any visible text/surface leak still fails.
+                assertTrue("$label changed at ($x, $y): $a -> $b", error <= 2f / 255f + .00001f)
             }
         }
     }

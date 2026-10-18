@@ -113,7 +113,12 @@ class ThemeScreenshotsTest {
             compose.waitForIdle()
             val after = compose.onRoot().captureToImage().toPixelMap()
             for (y in 0 until header.bottom.toInt()) for (x in header.left.toInt() until header.right.toInt()) {
-                org.junit.Assert.assertEquals("Scrolled chat painted over header or safe area at $x,$y in $choice", before[x,y], after[x,y])
+                val a = before[x,y]
+                val b = after[x,y]
+                val error = maxOf(kotlin.math.abs(a.red - b.red), kotlin.math.abs(a.green - b.green),
+                    kotlin.math.abs(a.blue - b.blue), kotlin.math.abs(a.alpha - b.alpha))
+                org.junit.Assert.assertTrue("Scrolled chat painted over header or safe area at $x,$y in $choice",
+                    error <= 2f / 255f + .00001f)
             }
             screenshot("theme-${choice.storageId}-narrow-large-chat-scrolled.png")
         }
