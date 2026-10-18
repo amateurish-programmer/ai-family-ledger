@@ -29,6 +29,12 @@ enum class ReportPeriod(val label: String, val previousLabel: String) {
 data class ReportRange(val start: LocalDate, val endExclusive: LocalDate, val previousStart: LocalDate)
 
 data class PeriodTotal(val period: String, val income: Long, val expense: Long)
+
+/** Member reports describe ownership, never the authenticated recorder. */
+fun reportMemberEntries(entries: List<LedgerEntry>, member: String, range: ReportRange): List<LedgerEntry> =
+    entries.filter { it.deletedAt == null && it.currency == "CNY" && it.type == EntryType.EXPENSE &&
+        it.member == member && it.occurredOn >= range.start.toString() && it.occurredOn < range.endExclusive.toString() }
+        .sortedWith(compareByDescending<LedgerEntry> { it.occurredOn }.thenBy { it.id })
 data class LedgerReport(val period: String, val summary: Summary, val previousExpense: Long,
     val members: List<CategoryTotal>, val incomeSources: List<CategoryTotal>,
     val trend: List<PeriodTotal>, val count: Int,

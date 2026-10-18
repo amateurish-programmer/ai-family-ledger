@@ -20,6 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -50,7 +51,7 @@ internal fun chatSendEnabled(state: LedgerState): Boolean =
         return
     }
     val style = LocalLedgerStyle.current
-    Column(Modifier.fillMaxSize().imePadding()) {
+    Column(Modifier.fillMaxSize().imePadding().clipToBounds()) {
         // The opaque fixed header paints above scrolled chat content, like the report controls.
         Column(Modifier.fillMaxWidth().zIndex(1f).background(MaterialTheme.colorScheme.background).testTag("chat_header")) {
             Row(Modifier.fillMaxWidth().padding(horizontal = style.pagePadding, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically,
@@ -211,7 +212,7 @@ internal fun chatSendEnabled(state: LedgerState): Boolean =
             savedAnchorOffset = offset
         }
     }
-    LazyColumn(modifier.testTag("chat_timeline"), state = listState, reverseLayout = messages.isNotEmpty(),
+    LazyColumn(modifier.clipToBounds().testTag("chat_timeline"), state = listState, reverseLayout = messages.isNotEmpty(),
         contentPadding = PaddingValues(horizontal = style.pagePadding, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(style.sectionSpacing)) {
         latestContent()
         if (messages.isEmpty()) item(key = "chat:empty") { emptyContent() }

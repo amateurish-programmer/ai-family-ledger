@@ -12,8 +12,8 @@ android {
         applicationId = "com.familyledger.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 27
-        versionName = "1.9.5"
+        versionCode = 28
+        versionName = "1.9.6"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true }

@@ -19,6 +19,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -101,7 +102,7 @@ import java.time.YearMonth
             LedgerNavigationBar(tab) { tab = it }
         }
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
+        LedgerViewport(padding) {
             if (state.busy && !state.syncing) LinearProgressIndicator(Modifier.fillMaxWidth())
             when (tab) {
                 0 -> chatScreenState.SaveableStateProvider("chat:${state.conversationKey}") {
@@ -120,6 +121,11 @@ import java.time.YearMonth
             }
         }
     }
+}
+
+/** Insets reserve space but do not clip drawing; keep pages inside their safe viewport. */
+@Composable internal fun LedgerViewport(padding: PaddingValues, content: @Composable ColumnScope.() -> Unit) {
+    Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).clipToBounds(), content = content)
 }
 
 @Composable internal fun LedgerNavigationBar(tab: Int, onTab: (Int) -> Unit) {

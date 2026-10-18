@@ -139,6 +139,138 @@ class ReportNavigationUiTest {
         compose.onNodeWithTag("report_period_label").assertTextEquals(today.toString())
     }
 
+    @Test fun memberRowOpensOnlyThatMembersCurrentPeriodExpenseDetails() {
+        compose.setContent {
+            FamilyLedgerTheme {
+                ReportContent(listOf(
+                    entry("m1", "2026-09-03", 12000).copy(type = EntryType.EXPENSE, isGift = false,
+                        member = "妈妈", recordedBy = "爸爸", categoryL1 = "养娃", categoryL2 = "奶粉"),
+                    entry("m2", "2026-09-08", 5600).copy(type = EntryType.EXPENSE, isGift = false,
+                        member = "妈妈", recordedBy = "爸爸", categoryL1 = "生活", categoryL2 = "买菜"),
+                    entry("other", "2026-09-04", 100).copy(type = EntryType.EXPENSE, member = "爸爸"),
+                    entry("income", "2026-09-05", 800000).copy(member = "妈妈"),
+                    entry("old", "2025-01-01", 999999).copy(type = EntryType.EXPENSE, member = "妈妈")),
+                    YearMonth.of(2026, 9), {}, false, false, null, null, { _, _ -> }, {}, {})
+            }
+        }
+        compose.onNodeWithTag("report_section_members").performClick()
+        compose.onNodeWithTag("report_member_0").assertHasClickAction().performClick()
+        compose.onNodeWithText("成员支出明细 · 2026 年 9 月").assertIsDisplayed()
+        compose.onNodeWithText("合计 ¥ 176.00 · 2 笔").assertIsDisplayed()
+        compose.onNodeWithText("2026-09-08 · 支出 ¥ 56.00").assertIsDisplayed()
+        compose.onNodeWithText("生活 · 买菜 · 妈妈 · 现金").assertIsDisplayed()
+        compose.onNodeWithText("养娃 · 奶粉 · 妈妈 · 现金").assertIsDisplayed()
+        compose.onNodeWithText("2026-09-04 · 支出 ¥ 1.00").assertDoesNotExist()
+        compose.onNodeWithText("关闭").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("member_detail").fetchSemanticsNodes().isEmpty() }
+        compose.onNodeWithTag("report_period_label").assertTextEquals("2026 年 9 月")
+        compose.onNodeWithTag("report_member_0").assertIsDisplayed()
+    }
+
+    @Test fun memberDetailsExcludeInvalidRowsAndUseOwnerRatherThanRecorder() {
+        compose.setContent {
+            FamilyLedgerTheme {
+                val owned = entry("owned", "2026-09-01", 123).copy(type = EntryType.EXPENSE,
+                    member = "妈妈", recordedBy = "爸爸", categoryL1 = "生活", note = "本期归属妈妈")
+                ReportContent(listOf(owned,
+                    owned.copy(id = "recorded", member = "爸爸", recordedBy = "妈妈", amountMinor = 200),
+                    owned.copy(id = "similar", member = "妈妈的账户", amountMinor = 300),
+                    owned.copy(id = "income", type = EntryType.INCOME, amountMinor = 400),
+                    owned.copy(id = "adjustment", type = EntryType.BALANCE_ADJUSTMENT, amountMinor = 500),
+                    owned.copy(id = "deleted", deletedAt = 1, amountMinor = 600),
+                    owned.copy(id = "foreign", currency = "USD", amountMinor = 700),
+                    owned.copy(id = "before", occurredOn = "2026-08-31", amountMinor = 800),
+                    owned.copy(id = "after", occurredOn = "2026-10-01", amountMinor = 900)),
+                    YearMonth.of(2026, 9), {}, false, false, null, null, { _, _ -> }, {}, {})
+            }
+        }
+        compose.onNodeWithTag("report_section_members").performClick()
+        compose.onNodeWithText("妈妈").performClick()
+        compose.onNodeWithText("合计 ¥ 1.23 · 1 笔").assertIsDisplayed()
+        compose.onNodeWithText("2026-09-01 · 支出 ¥ 1.23").assertIsDisplayed()
+        compose.onNodeWithText("生活 · 妈妈 · 现金").assertIsDisplayed()
+        compose.onNodeWithText("本期归属妈妈").assertIsDisplayed()
+    }
+
+    @Test fun sameNamedMemberAndCategoriesKeepIndependentDetailFilters() {
+        compose.setContent {
+            FamilyLedgerTheme {
+                ReportContent(listOf(
+                    entry("category", "2026-09-03", 12000).copy(type = EntryType.EXPENSE,
+                        member = "妈妈", categoryL1 = "养娃"),
+                    entry("member", "2026-09-08", 5600).copy(type = EntryType.EXPENSE,
+                        member = "养娃", categoryL1 = "生活"),
+                    entry("income", "2026-09-05", 90000).copy(member = "妈妈", categoryL1 = "养娃")),
+                    YearMonth.of(2026, 9), {}, false, false, null, null, { _, _ -> }, {}, {})
+            }
+        }
+        compose.onNodeWithTag("report_section_members").performClick()
+        compose.onNodeWithTag("report_member_1").performClick()
+        compose.onNodeWithText("成员支出明细 · 2026 年 9 月").assertIsDisplayed()
+        compose.onNodeWithText("合计 ¥ 56.00 · 1 笔").assertIsDisplayed()
+        compose.onNodeWithText("生活 · 养娃 · 现金").assertIsDisplayed()
+        compose.onNodeWithText("关闭").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("member_detail").fetchSemanticsNodes().isEmpty() }
+        compose.onNodeWithTag("report_section_categories").performClick()
+        compose.onNodeWithTag("report_expense_category_0").performClick()
+        compose.onNodeWithText("支出去向明细 · 2026 年 9 月").assertIsDisplayed()
+        compose.onNodeWithText("合计 ¥ 120.00 · 1 笔").assertIsDisplayed()
+        compose.onNodeWithText("养娃 · 妈妈 · 现金").assertIsDisplayed()
+        compose.onNodeWithText("关闭").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("category_detail").fetchSemanticsNodes().isEmpty() }
+        compose.onNodeWithTag("report_income_source_0").performScrollTo().performClick()
+        compose.onNodeWithText("收入来源明细 · 2026 年 9 月").assertIsDisplayed()
+        compose.onNodeWithText("合计 ¥ 900.00 · 1 笔").assertIsDisplayed()
+        compose.onNodeWithText("关闭").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("category_detail").fetchSemanticsNodes().isEmpty() }
+        compose.onNodeWithTag("report_section_members").performClick()
+        compose.onNodeWithTag("report_member_0").performClick()
+        compose.onNodeWithText("成员支出明细 · 2026 年 9 月").assertIsDisplayed()
+        compose.onNodeWithText("合计 ¥ 120.00 · 1 笔").assertIsDisplayed()
+    }
+
+    @Test fun memberDetailsFollowAllReportRangesAndCloseWhenMonthChanges() {
+        var month by mutableStateOf(YearMonth.of(2026, 9))
+        compose.setContent {
+            FamilyLedgerTheme {
+                val expense = entry("start", "2026-09-01", 123).copy(type = EntryType.EXPENSE)
+                ReportContent(listOf(expense,
+                    expense.copy(id = "weekStart", occurredOn = "2026-08-31", amountMinor = 4),
+                    expense.copy(id = "weekEnd", occurredOn = "2026-09-06", amountMinor = 5),
+                    expense.copy(id = "nextWeek", occurredOn = "2026-09-07", amountMinor = 6),
+                    expense.copy(id = "monthEnd", occurredOn = "2026-09-30", amountMinor = 7),
+                    expense.copy(id = "nextMonth", occurredOn = "2026-10-01", amountMinor = 8),
+                    expense.copy(id = "yearStart", occurredOn = "2026-01-01", amountMinor = 9),
+                    expense.copy(id = "yearEnd", occurredOn = "2026-12-31", amountMinor = 10),
+                    expense.copy(id = "previousYear", occurredOn = "2025-12-31", amountMinor = 1000),
+                    expense.copy(id = "nextYear", occurredOn = "2027-01-01", amountMinor = 2000)),
+                    month, { month = it }, false, false, null, null, { _, _ -> }, {}, {})
+            }
+        }
+        compose.onNodeWithTag("report_section_members").performClick()
+        listOf(
+            Triple("日报", "2026-09-01", "合计 ¥ 1.23 · 1 笔"),
+            Triple("周报", "2026-08-31 至 2026-09-06", "合计 ¥ 1.32 · 3 笔"),
+            Triple("月报", "2026 年 9 月", "合计 ¥ 1.41 · 4 笔"),
+            Triple("年报", "2026 年", "合计 ¥ 1.72 · 8 笔")
+        ).forEach { (period, label, total) ->
+            compose.onNodeWithText(period).performClick()
+            compose.onNodeWithTag("report_member_0").performClick()
+            compose.onNodeWithText("成员支出明细 · $label").assertIsDisplayed()
+            compose.onNodeWithText(total).assertIsDisplayed()
+            compose.onNodeWithText("关闭").performClick()
+            compose.waitUntil(5_000) { compose.onAllNodesWithTag("member_detail").fetchSemanticsNodes().isEmpty() }
+        }
+        compose.onNodeWithText("月报").performClick()
+        compose.onNodeWithTag("report_member_0").performClick()
+        compose.runOnIdle { month = YearMonth.of(2026, 10) }
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("member_detail").fetchSemanticsNodes().isEmpty() }
+        compose.onNodeWithTag("report_period_label").assertTextEquals("2026 年 10 月")
+        compose.onNodeWithTag("report_member_0").performClick()
+        compose.onNodeWithText("成员支出明细 · 2026 年 10 月").assertIsDisplayed()
+        compose.onNodeWithText("合计 ¥ 0.08 · 1 笔").assertIsDisplayed()
+    }
+
     @Test fun detailAnalysisRequiresDisclosureConfirmation() {
         var requests = 0
         compose.setContent {

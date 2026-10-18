@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.lifecycle.ViewModelStore
 import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
@@ -43,6 +44,7 @@ class ThemeScreenshotsTest {
     private val state = LedgerState(loading = false, entries = rows, localRole = "老公", localAvatar = "man",
         cloudStatus = CloudStatus(true, "design@example.invalid", "synthetic-family", "我们的家", 0),
         chatMessages = listOf(ChatMessage("question", true, "这个月家里的开支怎么样？"),
+            ChatMessage("long", false, (1..45).joinToString("\n") { "第${it}项生活观察：这是一段用于滚动边界检查的合成内容。" }),
             ChatMessage("answer", false, "## 这个月的生活账单\n已记录 **770.50 元**支出。\n- 买菜、晚餐与出行构成了日常开销。\n- 留意接下来的固定账单，预留生活预算。"),
             ChatMessage("request", true, "今晚和家人吃饭86元，我付的。")),
         quickDrafts = listOf(entry("proposal", EntryType.EXPENSE, 8600, "食品酒水", "2026-10-17", "老公").copy(note = "和家人一起晚餐")))
@@ -101,6 +103,20 @@ class ThemeScreenshotsTest {
         android.util.Log.i("AndroidRuntime", "theme-layout chat: list=$chatListBounds; header=$chatHeaderBounds")
         org.junit.Assert.assertTrue("Chat content must stay below the fixed header: list=$chatListBounds, header=$chatHeaderBounds", chatListBounds.top >= chatHeaderBounds.bottom)
         screenshot("theme-large-type-chat.png")
+        AppTheme.entries.forEach { choice ->
+            compose.runOnIdle { theme = choice; page = 0; narrow = true; largeType = true }
+            compose.onNodeWithTag("chat_timeline").performScrollToIndex(0)
+            compose.waitForIdle()
+            val before = compose.onRoot().captureToImage().toPixelMap()
+            val header = compose.onNodeWithTag("chat_header").fetchSemanticsNode().boundsInRoot
+            compose.onNodeWithTag("chat_timeline").performTouchInput { swipeDown(durationMillis = 150) }
+            compose.waitForIdle()
+            val after = compose.onRoot().captureToImage().toPixelMap()
+            for (y in 0 until header.bottom.toInt()) for (x in header.left.toInt() until header.right.toInt()) {
+                org.junit.Assert.assertEquals("Scrolled chat painted over header or safe area at $x,$y in $choice", before[x,y], after[x,y])
+            }
+            screenshot("theme-${choice.storageId}-narrow-large-chat-scrolled.png")
+        }
         AppTheme.entries.forEach { choice ->
             compose.runOnIdle { theme = choice; page = 4; narrow = true; largeType = true }
             compose.onAllNodesWithText("家庭成员名称完整显示").onFirst().assertIsDisplayed()

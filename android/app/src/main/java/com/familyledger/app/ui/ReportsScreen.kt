@@ -53,6 +53,12 @@ private enum class ReportSection(val label: String, val tag: String) {
     OVERVIEW("总览", "overview"), CATEGORIES("分类", "categories"), MEMBERS("成员", "members"), GIFTS("人情", "gifts")
 }
 
+private enum class ReportDetailKind(val label: String, val type: EntryType, val tag: String) {
+    EXPENSE_CATEGORY("支出去向", EntryType.EXPENSE, "category_detail"),
+    INCOME_SOURCE("收入来源", EntryType.INCOME, "category_detail"),
+    MEMBER("成员支出", EntryType.EXPENSE, "member_detail")
+}
+
 /** Sections share one report range; scroll and gift history scope are saved independently. */
 @Composable
 internal fun ReportContent(entries: List<LedgerEntry>, month: YearMonth, onMonth: (YearMonth) -> Unit,
@@ -63,12 +69,12 @@ internal fun ReportContent(entries: List<LedgerEntry>, month: YearMonth, onMonth
         mutableStateOf((if (month == YearMonth.now()) LocalDate.now() else month.atDay(1)).toString())
     }
     var sectionName by rememberSaveable { mutableStateOf(ReportSection.OVERVIEW.name) }
-    var selectedCategory by rememberSaveable { mutableStateOf<String?>(null) }
-    var selectedCategoryIncome by rememberSaveable { mutableStateOf(false) }
     val period = ReportPeriod.valueOf(periodName)
     val section = ReportSection.valueOf(sectionName)
     val daily = period == ReportPeriod.DAY || period == ReportPeriod.WEEK
     val anchor = if (daily) LocalDate.parse(selectedDay) else month.atDay(1)
+    var selectedDetail by rememberSaveable(period, anchor, section) { mutableStateOf<String?>(null) }
+    var selectedDetailKind by rememberSaveable(period, anchor, section) { mutableStateOf(ReportDetailKind.EXPENSE_CATEGORY.name) }
     val complete = remember(entries, anchor, period) { buildReport(entries, anchor, period) }
     val report = complete.summary
     val reportKey = "${complete.period}|$period|${entries.hashCode()}"
@@ -193,7 +199,7 @@ internal fun ReportContent(entries: List<LedgerEntry>, month: YearMonth, onMonth
                         itemsIndexed(report.categories, key = { _, row -> "category:${row.name}" }) { index, category ->
                             CategoryRankCard(index, category, report.expense, income = false,
                                 tag = "report_expense_category_$index") {
-                                selectedCategory = category.name; selectedCategoryIncome = false
+                                selectedDetail = category.name; selectedDetailKind = ReportDetailKind.EXPENSE_CATEGORY.name
                             }
                         }
                         item(key = "income_sources_heading") {
@@ -205,15 +211,18 @@ internal fun ReportContent(entries: List<LedgerEntry>, month: YearMonth, onMonth
                         itemsIndexed(complete.incomeSources, key = { _, row -> "income:${row.name}" }) { index, source ->
                             CategoryRankCard(index, source, report.income, income = true,
                                 tag = "report_income_source_$index") {
-                                selectedCategory = source.name; selectedCategoryIncome = true
+                                selectedDetail = source.name; selectedDetailKind = ReportDetailKind.INCOME_SOURCE.name
                             }
                         }
                     }
                     ReportSection.MEMBERS -> {
-                        item { SectionHeading("成员支出", "按账目归属统计，记账操作者单独记录。") }
+                        item { SectionHeading("成员支出", "按账目归属统计 · 点击成员查看明细；记账操作者单独记录。") }
                         if (complete.members.isEmpty()) item { EmptyLedger("本期暂无成员支出", "已入账的支出会按归属成员汇总。") }
-                        itemsIndexed(complete.members, key = { _, row -> "member:${row.name}" }) { _, member ->
-                            LedgerPanel(contentPadding = style.rowPadding) {
+                        itemsIndexed(complete.members, key = { _, row -> "member:${row.name}" }) { index, member ->
+                            LedgerPanel(Modifier.testTag("report_member_$index")
+                                .clickable(onClickLabel = "查看${member.name}支出明细", onClick = {
+                                    selectedDetail = member.name; selectedDetailKind = ReportDetailKind.MEMBER.name
+                                }), contentPadding = style.rowPadding) {
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                     IconBadge(Icons.Outlined.PersonOutline, sage = true)
                                     RankedAmount(member.name, "¥ ${Money.format(member.amount)}", Modifier.weight(1f))
@@ -226,7 +235,7 @@ internal fun ReportContent(entries: List<LedgerEntry>, month: YearMonth, onMonth
             }
         }
     }
-    selectedCategory?.let { name -> CategoryDetailSheet(name, selectedCategoryIncome, entries, complete.range, complete.period) { selectedCategory = null } }
+    selectedDetail?.let { name -> ReportDetailSheet(name, ReportDetailKind.valueOf(selectedDetailKind), entries, complete.range, complete.period) { selectedDetail = null } }
     if (requestAi) AlertDialog(onDismissRequest = { requestAi = false }, title = { Text("解读本期消费明细？") },
         text = { Text("将发送本期及对照期间统计，以及本期最多 40 笔收支的日期、金额、分类、成员、商家和备注节选，用于分析消费并给出建议。记录较多时优先大额收支，再补最近记录；不发送账户字段。") },
         confirmButton = { TextButton(onClick = { requestAi = false; onAnalyze(complete, reportKey) }) { Text("生成解读") } },
@@ -249,14 +258,13 @@ private fun CategoryRankCard(index: Int, category: CategoryTotal, total: Long, i
     }
 }
 
-/** Second-level view of one category: the period's entries of that category, mirroring the gift detail sheet. */
+/** The period's entries belonging to the selected category or member, mirroring the gift detail sheet. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CategoryDetailSheet(name: String, income: Boolean, entries: List<LedgerEntry>, range: ReportRange,
+private fun ReportDetailSheet(name: String, kind: ReportDetailKind, entries: List<LedgerEntry>, range: ReportRange,
     periodLabel: String, onClose: () -> Unit) {
-    val type = if (income) EntryType.INCOME else EntryType.EXPENSE
-    val rows = remember(entries, name, type, range) {
-        entries.filter { it.deletedAt == null && it.currency == "CNY" && it.type == type && it.categoryL1 == name &&
+    val rows = remember(entries, name, kind, range) {
+        if (kind == ReportDetailKind.MEMBER) reportMemberEntries(entries, name, range) else entries.filter { it.deletedAt == null && it.currency == "CNY" && it.type == kind.type && it.categoryL1 == name &&
             it.occurredOn >= range.start.toString() && it.occurredOn < range.endExclusive.toString() }
             .sortedWith(compareByDescending<LedgerEntry> { it.occurredOn }.thenBy { it.id })
     }
@@ -269,11 +277,11 @@ private fun CategoryDetailSheet(name: String, income: Boolean, entries: List<Led
                 Text(name, Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
                 TextButton(onClick = onClose) { Text("关闭") }
             }
-            Text("${if (income) "收入来源" else "支出去向"}明细 · $periodLabel", style = MaterialTheme.typography.bodySmall,
+            Text("${kind.label}明细 · $periodLabel", style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text("合计 ¥ ${Money.format(total)} · ${rows.size} 笔", style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold, fontFamily = style.moneyFontFamily)
-            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 440.dp).testTag("category_detail"),
+            LazyColumn(Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 440.dp).testTag(kind.tag),
                 verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 items(rows, key = { it.id }) { entry ->
                     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
