@@ -97,7 +97,10 @@ class ChatViewportUiTest {
                 val density = LocalDensity.current
                 CompositionLocalProvider(LocalDensity provides Density(density.density, 1.5f)) {
                     FamilyLedgerTheme(theme) {
-                        Box(Modifier.fillMaxSize().background(sentinel).testTag("page_root")) {
+                        // API 35's system navigation contrast scrim is outside app drawing control.
+                        // Capture the sentinel inside real system insets, then test the synthetic page inset.
+                        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)
+                            .background(sentinel).testTag("page_root")) {
                             Box(Modifier.fillMaxSize().padding(16.dp).testTag("page_viewport")) {
                                 QuickEntryScreen(model, state, SnackbarHostState(), null, {}, "viewport-test")
                             }
@@ -114,6 +117,7 @@ class ChatViewportUiTest {
                 val headerBounds = relativeTo(compose.onNodeWithTag("chat_header").fetchSemanticsNode().boundsInRoot, rootBounds)
                 val pageBounds = relativeTo(compose.onNodeWithTag("page_viewport").fetchSemanticsNode().boundsInRoot, rootBounds)
                 val before = root.captureToImage().toPixelMap()
+                assertOutsideIsSentinel(before, pageBounds, "$choice page before scroll")
                 listOf(8, 15, 0).forEach { index ->
                     compose.onNodeWithTag("chat_timeline").performScrollToIndex(index)
                     compose.waitForIdle()
