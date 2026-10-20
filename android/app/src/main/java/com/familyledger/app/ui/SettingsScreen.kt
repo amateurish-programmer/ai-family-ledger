@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.familyledger.app.data.AppTheme
 import com.familyledger.app.data.AppUpdateService
 import com.familyledger.app.data.IdentityProfile
+import com.familyledger.app.data.NetworkDiagnosticReport
 import com.familyledger.app.data.XlsxCodec
 import com.familyledger.app.domain.ImportBatch
 import java.time.LocalDate
@@ -32,7 +33,8 @@ private enum class SettingsRoute(val title: String, val subtitle: String) {
     HISTORY("历史账本", "导入、导出与历史整理"),
     BACKUP("备份与恢复", "妥善保存每一笔记录"),
     APPEARANCE("外观主题", "选择你喜欢的账本模样"),
-    UPDATES("应用更新", "检查并安装新版本")
+    UPDATES("应用更新", "检查并安装新版本"),
+    DIAGNOSTICS("网络诊断", "检查连接并分享诊断文件")
 }
 
 @Composable fun SettingsScreen(model: LedgerViewModel, state: LedgerState, focusUpdates: Boolean = false, onUpdatesFocused: () -> Unit = {}) {
@@ -47,6 +49,11 @@ private enum class SettingsRoute(val title: String, val subtitle: String) {
     val backupScroll = rememberScrollState()
     val appearanceScroll = rememberScrollState()
     val updatesScroll = rememberScrollState()
+    val diagnosticsScroll = rememberScrollState()
+    val diagnosticExports = rememberNetworkDiagnosticExports()
+    var completedDiagnosticReport by rememberSaveable(stateSaver = NetworkDiagnosticReportSaver) {
+        mutableStateOf<NetworkDiagnosticReport?>(null)
+    }
     val scroll = when (route) {
         SettingsRoute.HOME -> homeScroll
         SettingsRoute.ROLE -> roleScroll
@@ -54,6 +61,7 @@ private enum class SettingsRoute(val title: String, val subtitle: String) {
         SettingsRoute.BACKUP -> backupScroll
         SettingsRoute.APPEARANCE -> appearanceScroll
         SettingsRoute.UPDATES -> updatesScroll
+        SettingsRoute.DIAGNOSTICS -> diagnosticsScroll
     }
     var rollback by remember { mutableStateOf<ImportBatch?>(null) }
     var role by rememberSaveable(state.localRole) { mutableStateOf(state.localRole) }
@@ -178,6 +186,9 @@ private enum class SettingsRoute(val title: String, val subtitle: String) {
                     AppUpdateSection(ledgerBusy = state.busy || state.loading || state.documentPickerOpen || state.spreadsheetExportReady)
                     SettingsNote("登录并加入家庭后可使用记账与同步；已保存账目可离线查看和编辑。")
                 }
+                SettingsRoute.DIAGNOSTICS -> NetworkDiagnosticsSection(diagnosticExports, completedDiagnosticReport) {
+                    completedDiagnosticReport = it
+                }
             }
             Spacer(Modifier.height(8.dp))
         }
@@ -228,6 +239,8 @@ private enum class SettingsRoute(val title: String, val subtitle: String) {
             SettingsAction(Icons.Outlined.Palette, "外观主题", theme.label, true) { open(SettingsRoute.APPEARANCE) }
             SettingsDivider()
             SettingsAction(Icons.Outlined.SystemUpdateAlt, "应用更新", "v$version", true) { open(SettingsRoute.UPDATES) }
+            SettingsDivider()
+            SettingsAction(Icons.Outlined.NetworkCheck, "网络诊断", "连接异常时，生成文件发给维护者", true) { open(SettingsRoute.DIAGNOSTICS) }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.FavoriteBorder, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -407,8 +407,15 @@ class CloudService(context: Context) {
         val base = officialUrl(pair.first)
         require(path.startsWith("/") && !path.startsWith("//"))
         syncMetrics?.takeIf { it.version == version }?.let { it.requests++ }
-        val connection = URI(CloudEndpoint.requestUrl(base, path, CloudNetwork.prefersDirect(appContext)))
-            .toURL().openConnection() as HttpURLConnection
+        val preferDirect = CloudNetwork.prefersDirect(appContext)
+        val diagnostic = CloudRequestDiagnosticTrace.start(appContext, diagnosticRequestCategory(path), preferDirect)
+        val connection = try {
+            URI(CloudEndpoint.requestUrl(base, path, preferDirect)).toURL().openConnection() as HttpURLConnection
+        } catch (failure: Throwable) {
+            diagnostic?.failure = failure
+            diagnostic?.finish()
+            throw failure
+        }
         val aiRequest = path.startsWith("/functions/")
         val deadline = System.nanoTime() + if (aiRequest) 120_000_000_000L else 90_000_000_000L
         try {
@@ -420,6 +427,7 @@ class CloudService(context: Context) {
             connection.setRequestProperty("apikey", pair.second)
             connection.setRequestProperty("Accept", "application/json")
             if (bearer != null) connection.setRequestProperty("Authorization", "Bearer $bearer")
+            diagnostic?.stage = DiagnosticStage.SEND
             if (body != null) {
                 val bytes = body.toString().toByteArray(Charsets.UTF_8)
                 require(bytes.size <= 6 * 1024 * 1024) { "请求数据过大" }
@@ -428,8 +436,11 @@ class CloudService(context: Context) {
                 connection.setFixedLengthStreamingMode(bytes.size)
                 connection.outputStream.use { it.write(bytes) }
             }
+            diagnostic?.stage = DiagnosticStage.READ_HEADERS
             val code = connection.responseCode
+            diagnostic?.httpStatus = code
             require(code !in 300..399) { "服务器重定向已拒绝，凭据未转发" }
+            diagnostic?.stage = DiagnosticStage.READ_BODY
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
             val bytes = stream?.use { input ->
                 val output = java.io.ByteArrayOutputStream()
@@ -443,13 +454,20 @@ class CloudService(context: Context) {
                 }
                 output.toByteArray()
             } ?: byteArrayOf()
+            diagnostic?.stage = DiagnosticStage.COMPLETE
             synchronized(stateGuard) { checkEpoch(version) }
             if (code !in 200..299) {
                 // Do not expose raw server errors, which may echo account/ledger content.
                 throw HttpFailure(code, CloudErrors.message(code, path, String(bytes, Charsets.UTF_8)))
             }
             return String(bytes, Charsets.UTF_8)
-        } finally { connection.disconnect() }
+        } catch (failure: Throwable) {
+            if (failure !is HttpFailure) diagnostic?.failure = failure
+            throw failure
+        } finally {
+            diagnostic?.finish()
+            connection.disconnect()
+        }
     }
 
     private fun officialUrl(value: String): String {
