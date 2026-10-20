@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.junit4.StateRestorationTester
@@ -229,7 +230,8 @@ class NetworkDiagnosticsUiTest {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, 1.5f)) {
                 FamilyLedgerTheme(theme) {
-                    Column(Modifier.width(320.dp).fillMaxHeight().verticalScroll(rememberScrollState()).padding(18.dp)) {
+                    Column(Modifier.width(320.dp).fillMaxHeight().windowInsetsPadding(WindowInsets.safeDrawing)
+                        .testTag("diagnostic_safe_content").verticalScroll(rememberScrollState()).padding(18.dp)) {
                         NetworkDiagnosticsPanel(initial, { CompletableDeferred<NetworkDiagnosticReport>().await() },
                             { saves++ }, { shares++ }, exportBusy)
                     }
@@ -248,6 +250,9 @@ class NetworkDiagnosticsUiTest {
             compose.onNodeWithText("取消诊断").performClick()
             compose.onNodeWithText("保存诊断文件").performScrollTo().assertIsDisplayed().performClick()
             compose.onNodeWithText("分享诊断文件").performScrollTo().assertIsDisplayed().performClick()
+            val shareBounds = compose.onNodeWithText("分享诊断文件").fetchSemanticsNode().boundsInRoot
+            val safeBounds = compose.onNodeWithTag("diagnostic_safe_content").fetchSemanticsNode().boundsInRoot
+            assertTrue("Diagnostic actions must stay within the system safe area", shareBounds.bottom <= safeBounds.bottom)
             screenshot("ledger-network-diagnostics-${choice.name.lowercase()}-320-large.png")
         }
         compose.runOnIdle { assertEquals(3, saves); assertEquals(3, shares) }
