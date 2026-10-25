@@ -28,7 +28,7 @@
 - 更新服务器在新版发布验证成功后清理旧安装包，仅保留最新版本。
 - [V1.9.8 APK](https://family-ledger-gateway.pages.dev/updates/releases/30/ai-family-ledger-v1.9.8.apk) · [V1.9.8 验证与交付记录](docs/V1.9.8.md)
 
-V1.9.8 已通过[正式发布流程](https://github.com/amateurish-programmer/ai-family-ledger/actions/runs/40166346993)：195 项 JVM、99 项 Android 35 模拟器测试全部通过，lint 无错误，后端与发布检查成功。三主题分类卡片截图已核对，Pages 与原 Supabase 的清单及完整安装包均与正式 CI 一致，签名沿用 V1.9.7。实体手机覆盖安装和真实账号同步未执行；旧版请覆盖升级，不要卸载或清除数据。
+V1.9.8 已通过[正式发布流程](https://github.com/amateurish-programmer/ai-family-ledger/actions/runs/40166346993)：195 项 JVM、99 项 Android 35 模拟器测试全部通过，lint 无错误，后端与发布检查成功。三主题分类卡片截图已核对，Pages 与原 Supabase 的清单及完整安装包均与正式 CI 一致，签名沿用 V1.9.7。已在 vivo V2430A / Android 16 从 V1.9.7 覆盖升级，原有账目、聊天和草稿逐行核对一致，冷启动恢复聊天与成员分类筛选真机通过；本轮未主动发起真实账号云端同步。旧版请覆盖升级，不要卸载或清除数据。
 
 ## 版本记录
 
