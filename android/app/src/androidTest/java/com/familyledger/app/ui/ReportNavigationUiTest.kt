@@ -192,6 +192,47 @@ class ReportNavigationUiTest {
         compose.onNodeWithText("本期归属妈妈").assertIsDisplayed()
     }
 
+    @Test fun memberCategorySelectionUpdatesExactTotalDetailsAndResetsOnReopen() {
+        val food = entry("food", "2026-09-03", 12001).copy(type = EntryType.EXPENSE, isGift = false,
+            member = "老公", recordedBy = "老婆", categoryL1 = "食品酒水", categoryL2 = "买菜")
+        var rows by mutableStateOf(listOf(food,
+            food.copy(id = "meal", occurredOn = "2026-09-08", amountMinor = 5602, categoryL2 = "餐饮"),
+            food.copy(id = "travel", amountMinor = 3000, categoryL1 = "交通", categoryL2 = "地铁"),
+            food.copy(id = "other-owner", member = "老婆", recordedBy = "老公", amountMinor = 999),
+            food.copy(id = "old", occurredOn = "2026-08-31", amountMinor = 999)))
+        compose.setContent {
+            FamilyLedgerTheme {
+                ReportContent(rows, YearMonth.of(2026, 9), {}, false, false, null, null, { _, _ -> }, {}, {})
+            }
+        }
+        compose.onNodeWithTag("report_section_members").performClick()
+        compose.onNodeWithTag("report_member_0").performClick()
+        compose.onNodeWithText("合计 ¥ 206.03 · 3 笔").assertIsDisplayed()
+        compose.onNodeWithTag("member_category_filter").performClick()
+        compose.onNodeWithText("食品酒水").performClick()
+        compose.onNodeWithText("支出分类：食品酒水").assertIsDisplayed()
+        compose.onNodeWithText("合计 ¥ 176.03 · 2 笔").assertIsDisplayed()
+        compose.onNodeWithText("2026-09-08 · 支出 ¥ 56.02").assertIsDisplayed()
+        compose.onNodeWithText("交通 · 地铁 · 老公 · 现金").assertDoesNotExist()
+        compose.onNodeWithTag("member_category_filter").performClick()
+        compose.onNodeWithText("交通").performClick()
+        compose.onNodeWithText("合计 ¥ 30.00 · 1 笔").assertIsDisplayed()
+        compose.onNodeWithText("交通 · 地铁 · 老公 · 现金").assertIsDisplayed()
+        // A sync or edit can remove the selected category while this sheet is open.
+        compose.runOnIdle { rows = rows.filterNot { it.categoryL1 == "交通" } }
+        compose.onNodeWithText("合计 ¥ 0.00 · 0 笔").assertIsDisplayed()
+        compose.onNodeWithText("本期该分类暂无支出。").assertIsDisplayed()
+        compose.onNodeWithTag("member_category_filter").performClick()
+        compose.onNodeWithText("全部分类").performClick()
+        compose.onNodeWithText("合计 ¥ 176.03 · 2 笔").assertIsDisplayed()
+        compose.onNodeWithTag("member_category_filter").performClick()
+        compose.onNodeWithText("食品酒水").performClick()
+        compose.onNodeWithText("关闭").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("member_detail").fetchSemanticsNodes().isEmpty() }
+        compose.onNodeWithTag("report_member_0").performClick()
+        compose.onNodeWithText("支出分类：全部分类").assertIsDisplayed()
+    }
+
     @Test fun sameNamedMemberAndCategoriesKeepIndependentDetailFilters() {
         compose.setContent {
             FamilyLedgerTheme {

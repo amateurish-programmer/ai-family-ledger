@@ -31,9 +31,11 @@ data class ReportRange(val start: LocalDate, val endExclusive: LocalDate, val pr
 data class PeriodTotal(val period: String, val income: Long, val expense: Long)
 
 /** Member reports describe ownership, never the authenticated recorder. */
-fun reportMemberEntries(entries: List<LedgerEntry>, member: String, range: ReportRange): List<LedgerEntry> =
+fun reportMemberEntries(entries: List<LedgerEntry>, member: String, range: ReportRange,
+    categoryL1: String? = null): List<LedgerEntry> =
     entries.filter { it.deletedAt == null && it.currency == "CNY" && it.type == EntryType.EXPENSE &&
-        it.member == member && it.occurredOn >= range.start.toString() && it.occurredOn < range.endExclusive.toString() }
+        it.member == member && (categoryL1 == null || it.categoryL1 == categoryL1) &&
+        it.occurredOn >= range.start.toString() && it.occurredOn < range.endExclusive.toString() }
         .sortedWith(compareByDescending<LedgerEntry> { it.occurredOn }.thenBy { it.id })
 data class LedgerReport(val period: String, val summary: Summary, val previousExpense: Long,
     val members: List<CategoryTotal>, val incomeSources: List<CategoryTotal>,

@@ -37,7 +37,8 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 
 internal fun chatInputEnabled(state: LedgerState): Boolean =
-    !state.loading && !state.chatSending && state.quickDrafts.isEmpty() && (!state.busy || state.syncing)
+    !state.loading && state.conversationLoad == ConversationLoad.READY &&
+        !state.chatSending && state.quickDrafts.isEmpty() && (!state.busy || state.syncing)
 
 internal fun chatSendEnabled(state: LedgerState): Boolean =
     chatInputEnabled(state) && !state.busy && state.chatInput.isNotBlank()
@@ -69,9 +70,22 @@ internal fun chatSendEnabled(state: LedgerState): Boolean =
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .55f))
         }
-        ChatTimeline(state.chatMessages, conversationKey, state.localRole, state.localAvatar,
+        // Build the saved timeline only after local history has loaded, so startup's
+        // temporary empty state cannot become the returning user's welcome screen.
+        if (state.conversationLoad != ConversationLoad.READY) {
+            Row(Modifier.weight(1f).fillMaxWidth().padding(horizontal = style.pagePadding).testTag("chat_history_status"),
+                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
+                if (state.conversationLoad == ConversationLoad.LOADING) {
+                    CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                    Text("正在读取记账记录…", style = MaterialTheme.typography.bodyMedium)
+                } else {
+                    Text("记账记录暂时无法读取，请重试。", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                    TextButton(onClick = model::retryConversation, enabled = !state.loading && !state.busy) { Text("重新读取") }
+                }
+            }
+        } else ChatTimeline(state.chatMessages, conversationKey, state.localRole, state.localAvatar,
             modifier = Modifier.weight(1f).fillMaxWidth(), emptyContent = {
-                Column(Modifier.fillMaxWidth().padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (state.quickDrafts.isEmpty()) Column(Modifier.fillMaxWidth().padding(top = 4.dp).testTag("chat_welcome"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     if (!style.compact) FamilyIllustration(Modifier.align(Alignment.CenterHorizontally))
                     Text(if (style.compact) "记下收支，看清生活。" else if (style.journal) "一笔一页，\n收藏家的日常。" else "收支随手记，\n家里的账一起理。", style = MaterialTheme.typography.headlineMedium)
                     Text("记录收支、查询账目，或聊聊家庭财务。\n每一笔记录，都由你确认后保存。", color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -130,7 +144,8 @@ internal fun chatSendEnabled(state: LedgerState): Boolean =
         }
         Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
-                AnimatedVisibility(state.cloudStatus?.email == null || state.cloudStatus.familyId == null) {
+                AnimatedVisibility(state.conversationLoad == ConversationLoad.READY &&
+                    (state.cloudStatus?.email == null || state.cloudStatus.familyId == null)) {
                     TextButton(onClick = model::openCloud, enabled = !state.busy) {
                         Icon(Icons.Outlined.PeopleOutline, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("登录并加入家庭，开始记账")
                     }

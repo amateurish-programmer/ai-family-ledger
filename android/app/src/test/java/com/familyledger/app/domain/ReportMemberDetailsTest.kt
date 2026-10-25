@@ -33,4 +33,32 @@ class ReportMemberDetailsTest {
             assertEquals(expected[period], reportMemberEntries(rows, "妈妈", report.range).map { it.id })
         }
     }
+
+    @Test fun categoryFilterCombinesSubcategoriesButNeverOtherOwnersOrSimilarCategoryNames() {
+        val food = row("food", "2026-10-01", 1, "老公").copy(categoryL1 = "食品酒水", categoryL2 = "买菜", recordedBy = "老婆")
+        val rows = listOf(food, food.copy(id = "meal", occurredOn = "2026-10-25", amountMinor = 2, categoryL2 = "餐饮"),
+            food.copy(id = "travel", categoryL1 = "交通", amountMinor = 400),
+            food.copy(id = "similar", categoryL1 = "食品酒水其他", amountMinor = 500),
+            food.copy(id = "wife", member = "老婆", recordedBy = "老公", amountMinor = 600),
+            food.copy(id = "income", type = EntryType.INCOME), food.copy(id = "adjustment", type = EntryType.BALANCE_ADJUSTMENT),
+            food.copy(id = "deleted", deletedAt = 1), food.copy(id = "foreign", currency = "USD"),
+            food.copy(id = "previous", occurredOn = "2026-09-30"), food.copy(id = "next", occurredOn = "2026-11-01"))
+        val range = ReportPeriod.MONTH.range(LocalDate.parse("2026-10-25"))
+        val selected = reportMemberEntries(rows, "老公", range, "食品酒水")
+        assertEquals(listOf("meal", "food"), selected.map { it.id })
+        assertEquals(3L, selected.fold(0L) { total, entry -> Math.addExact(total, entry.amountMinor) })
+        assertEquals(4, reportMemberEntries(rows, "老公", range).size)
+        assertTrue(reportMemberEntries(rows, "老公", range, "不存在").isEmpty())
+    }
+
+    @Test fun selectedCategoryStillUsesDayWeekMonthAndYearBoundaries() {
+        val rows = listOf(row("today", "2026-10-01", 1), row("week", "2026-10-04", 2),
+            row("month", "2026-10-31", 4), row("year", "2026-12-31", 8),
+            row("next-year", "2027-01-01", 16), row("other", "2026-10-01", 32).copy(categoryL1 = "交通"))
+        val expected = mapOf(ReportPeriod.DAY to 1L, ReportPeriod.WEEK to 3L, ReportPeriod.MONTH to 7L, ReportPeriod.YEAR to 15L)
+        expected.forEach { (period, amount) ->
+            val selected = reportMemberEntries(rows, "妈妈", period.range(LocalDate.parse("2026-10-01")), "生活")
+            assertEquals(amount, selected.fold(0L) { total, entry -> Math.addExact(total, entry.amountMinor) })
+        }
+    }
 }

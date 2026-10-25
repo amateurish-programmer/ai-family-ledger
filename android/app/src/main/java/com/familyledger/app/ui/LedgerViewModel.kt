@@ -11,6 +11,8 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+enum class ConversationLoad { LOADING, READY, FAILED }
+
 data class LedgerState(val entries: List<LedgerEntry> = emptyList(), val loading: Boolean = true,
     val busy: Boolean = false, val syncing: Boolean = false, val message: String? = null, val restorePreview: List<LedgerEntry>? = null,
     val savedEntryId: String? = null, val importPreview: ImportPreview? = null,
@@ -20,7 +22,7 @@ data class LedgerState(val entries: List<LedgerEntry> = emptyList(), val loading
     val selectedGiftCategories: Set<GiftCategory> = emptySet(), val giftProposals: List<GiftHistoryProposal>? = null,
     val giftAnalyzing: Boolean = false,
     val chatMessages: List<ChatMessage> = emptyList(), val chatInput: String = "", val localRole: String = "本人",
-    val conversationKey: String = "loading",
+    val conversationKey: String = "loading", val conversationLoad: ConversationLoad = ConversationLoad.LOADING,
     val cloudStatus: CloudStatus? = null, val cloudConflicts: List<CloudConflict> = emptyList(), val inviteCode: String? = null,
     val reportText: String? = null, val reportKey: String? = null, val cloudOpen: Boolean = false,
     val autoSync: Boolean = false, val operationStatus: String? = null, val localAvatar: String = "person", val documentPickerOpen: Boolean = false, val spreadsheetExportReady: Boolean = false,
@@ -77,20 +79,32 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         val owner = cloud?.conversationOwner() ?: "local"
         if (owner == chatOwner) return
         // Do not display one account's messages while another account's history is loading.
-        mutableState.update { it.copy(chatMessages = emptyList(), quickDrafts = emptyList(), chatInput = "", conversationKey = "loading:$owner") }
-        val messages = repository.chatMessages(owner)
-        val drafts = repository.chatDrafts(owner)
-        chatOwner = owner
-        mutableState.update { it.copy(chatMessages = messages, quickDrafts = drafts, conversationKey = owner,
-            chatInput = messages.lastOrNull()?.takeIf { m -> m.user }?.text?.take(2000) ?: "") }
+        mutableState.update { it.copy(chatMessages = emptyList(), quickDrafts = emptyList(), chatInput = "",
+            conversationKey = "loading:$owner", conversationLoad = ConversationLoad.LOADING) }
+        try {
+            val messages = repository.chatMessages(owner)
+            val drafts = repository.chatDrafts(owner)
+            chatOwner = owner
+            mutableState.update { it.copy(chatMessages = messages, quickDrafts = drafts, conversationKey = owner,
+                conversationLoad = ConversationLoad.READY,
+                chatInput = messages.lastOrNull()?.takeIf { m -> m.user }?.text?.take(2000) ?: "") }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (e: Exception) {
+            mutableState.update { it.copy(conversationLoad = ConversationLoad.FAILED) }
+            throw e
+        }
     }
+
+    fun retryConversation() = perform { restoreConversation() }
 
     init {
         refreshCloud()
         mutableState.update { it.copy(autoSync = cloud?.autoSyncEnabled() ?: false) }
         viewModelScope.launch {
             try { restoreConversation() }
-            catch (e: Exception) { mutableState.update { it.copy(message = "对话读取失败，请重新打开应用；已有数据未删除") } }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (e: Exception) { mutableState.update { it.copy(message = "对话读取失败，可在记账页重新读取；已有数据未删除") } }
             repository.entries.catch { mutableState.update { it.copy(loading = false, message = "账本读取失败，请关闭后重试") } }
                 .collect { rows -> mutableState.update { it.copy(entries = rows, loading = false) } }
         }

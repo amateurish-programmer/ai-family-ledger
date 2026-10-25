@@ -36,6 +36,7 @@ class QuickReceiptUiTest {
             QuickEntryScreen(model, state, SnackbarHostState(), null, {}, state.conversationKey)
         } }
         compose.waitUntil(10000) { !model.state.value.loading && model.state.value.quickDrafts.size == count }
+        compose.onNodeWithTag("chat_welcome").assertDoesNotExist()
         assertTrue(runBlocking { repository.allEntries().isEmpty() })
     }
     @Test fun singleReceiptOnlySavesAfterItsConfirmation() {

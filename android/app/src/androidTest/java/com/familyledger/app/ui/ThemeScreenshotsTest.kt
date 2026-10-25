@@ -41,7 +41,7 @@ class ThemeScreenshotsTest {
         entry("gift", EntryType.EXPENSE, 20000, "人情往来", "2026-10-12", "家人").copy(isGift = true, counterparty = "亲友甲"),
         entry("old", EntryType.INCOME, 1200000, "工资", "2026-09-08", "老公")
     )
-    private val state = LedgerState(loading = false, entries = rows, localRole = "老公", localAvatar = "man",
+    private val state = LedgerState(loading = false, conversationLoad = ConversationLoad.READY, entries = rows, localRole = "老公", localAvatar = "man",
         cloudStatus = CloudStatus(true, "design@example.invalid", "synthetic-family", "我们的家", 0),
         chatMessages = listOf(ChatMessage("question", true, "这个月家里的开支怎么样？"),
             ChatMessage("long", false, (1..45).joinToString("\n") { "第${it}项生活观察：这是一段用于滚动边界检查的合成内容。" }),
@@ -135,6 +135,14 @@ class ThemeScreenshotsTest {
             android.util.Log.i("AndroidRuntime", "theme-layout ${choice.storageId}: list=$listBounds; tab=$tabBounds; heading=${compose.onNodeWithText("成员支出").fetchSemanticsNode().boundsInRoot}")
             org.junit.Assert.assertTrue("Report content overlaps section tabs: list=$listBounds, tab=$tabBounds", listBounds.top >= tabBounds.bottom)
             screenshot("theme-${choice.storageId}-narrow-large-report.png")
+            compose.onNodeWithTag("report_member_0").performClick()
+            compose.onNodeWithTag("member_category_filter").assertIsDisplayed().performClick()
+            compose.onNodeWithText("食品酒水").performClick()
+            compose.onNodeWithText("支出分类：食品酒水").assertIsDisplayed()
+            compose.onNodeWithText("合计 ¥ 199999999.98 · 2 笔").assertIsDisplayed()
+            screenshot("theme-${choice.storageId}-member-category.png")
+            compose.onNodeWithText("关闭").performClick()
+            compose.waitUntil(5_000) { compose.onAllNodesWithTag("member_detail").fetchSemanticsNodes().isEmpty() }
         }
     }
 

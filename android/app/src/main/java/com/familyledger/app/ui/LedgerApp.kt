@@ -105,9 +105,11 @@ import java.time.YearMonth
         LedgerViewport(padding) {
             if (state.busy && !state.syncing) LinearProgressIndicator(Modifier.fillMaxWidth())
             when (tab) {
-                0 -> chatScreenState.SaveableStateProvider("chat:${state.conversationKey}") {
-                    QuickEntryScreen(model, state, snackbar, draftEditorKey, onEditingChange = { draftEditorKey = it },
-                        conversationKey = state.conversationKey)
+                0 -> key(state.conversationKey) {
+                    chatScreenState.SaveableStateProvider("chat:${state.conversationKey}") {
+                        QuickEntryScreen(model, state, snackbar, draftEditorKey, onEditingChange = { draftEditorKey = it },
+                            conversationKey = state.conversationKey)
+                    }
                 }
                 1 -> chatScreenState.SaveableStateProvider("ledger") {
                     LedgerScreen(state, month, { monthText = it.toString() }, { editorKey = it.id }, model::delete, model::syncCloud)

@@ -263,8 +263,14 @@ private fun CategoryRankCard(index: Int, category: CategoryTotal, total: Long, i
 @Composable
 private fun ReportDetailSheet(name: String, kind: ReportDetailKind, entries: List<LedgerEntry>, range: ReportRange,
     periodLabel: String, onClose: () -> Unit) {
-    val rows = remember(entries, name, kind, range) {
-        if (kind == ReportDetailKind.MEMBER) reportMemberEntries(entries, name, range) else entries.filter { it.deletedAt == null && it.currency == "CNY" && it.type == kind.type && it.categoryL1 == name &&
+    var selectedCategory by rememberSaveable(name, kind, range) { mutableStateOf<String?>(null) }
+    var choosingCategory by remember { mutableStateOf(false) }
+    val categories = remember(entries, name, kind, range) {
+        if (kind == ReportDetailKind.MEMBER) reportMemberEntries(entries, name, range)
+            .map { it.categoryL1 }.distinct().sorted() else emptyList()
+    }
+    val rows = remember(entries, name, kind, range, selectedCategory) {
+        if (kind == ReportDetailKind.MEMBER) reportMemberEntries(entries, name, range, selectedCategory) else entries.filter { it.deletedAt == null && it.currency == "CNY" && it.type == kind.type && it.categoryL1 == name &&
             it.occurredOn >= range.start.toString() && it.occurredOn < range.endExclusive.toString() }
             .sortedWith(compareByDescending<LedgerEntry> { it.occurredOn }.thenBy { it.id })
     }
@@ -279,10 +285,31 @@ private fun ReportDetailSheet(name: String, kind: ReportDetailKind, entries: Lis
             }
             Text("${kind.label}明细 · $periodLabel", style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (kind == ReportDetailKind.MEMBER) {
+                Box(Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = { choosingCategory = true },
+                        modifier = Modifier.fillMaxWidth().testTag("member_category_filter")) {
+                        Text("支出分类：${selectedCategory ?: "全部分类"}", Modifier.weight(1f), textAlign = TextAlign.Start)
+                        Icon(Icons.Outlined.ArrowDropDown, contentDescription = null)
+                    }
+                    DropdownMenu(expanded = choosingCategory, onDismissRequest = { choosingCategory = false },
+                        modifier = Modifier.heightIn(max = 320.dp)) {
+                        DropdownMenuItem(text = { Text("全部分类") }, onClick = { selectedCategory = null; choosingCategory = false })
+                        categories.forEach { category ->
+                            DropdownMenuItem(text = { Text(category) }, onClick = { selectedCategory = category; choosingCategory = false })
+                        }
+                    }
+                }
+            }
             Text("合计 ¥ ${Money.format(total)} · ${rows.size} 笔", style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold, fontFamily = style.moneyFontFamily)
+            key(name, kind, range, selectedCategory) {
             LazyColumn(Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 440.dp).testTag(kind.tag),
                 verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                if (rows.isEmpty()) item {
+                    Text(if (kind == ReportDetailKind.MEMBER) "本期该分类暂无支出。" else "本期暂无符合条件的记录。",
+                        style = MaterialTheme.typography.bodyMedium)
+                }
                 items(rows, key = { it.id }) { entry ->
                     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
                         Text("${entry.occurredOn} · ${entry.type.label} ¥ ${Money.format(entry.amountMinor)}",
@@ -294,6 +321,7 @@ private fun ReportDetailSheet(name: String, kind: ReportDetailKind, entries: Lis
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     }
                 }
+            }
             }
         }
     }

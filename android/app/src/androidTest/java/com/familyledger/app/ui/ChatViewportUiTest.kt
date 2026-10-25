@@ -85,7 +85,7 @@ class ChatViewportUiTest {
         val store = ViewModelStore()
         lateinit var model: LedgerViewModel
         var theme by mutableStateOf(AppTheme.WARM)
-        val state = LedgerState(loading = false, localRole = "测试成员", localAvatar = "person",
+        val state = LedgerState(loading = false, conversationLoad = ConversationLoad.READY, localRole = "测试成员", localAvatar = "person",
             cloudStatus = CloudStatus(true, "viewport@example.invalid", "synthetic-family", "测试家庭", 0),
             chatMessages = (1..60).map { index ->
                 ChatMessage("message-$index", index % 2 == 0,
