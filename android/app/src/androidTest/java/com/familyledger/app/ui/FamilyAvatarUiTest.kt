@@ -1,8 +1,14 @@
 package com.familyledger.app.ui
 
 import android.graphics.Bitmap
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -42,18 +48,22 @@ class FamilyAvatarUiTest {
             var report by mutableStateOf(false)
             lateinit var model: LedgerViewModel
             compose.runOnIdle { model = LedgerViewModel(LedgerRepository(db)); store.put("avatar", model) }
-            compose.setContent { FamilyLedgerTheme {
-                if (!report) QuickEntryScreen(model, LedgerState(loading = false, localRole = "甲", localAvatar = local,
-                    conversationLoad = ConversationLoad.READY), SnackbarHostState(), null, {}, "fixture")
-                else ReportsScreen(listOf(LedgerEntry("one", EntryType.INCOME, "2026-11-01", 125L, "工资",
-                    account = "现金", member = "甲", recordedBy = "乙")), YearMonth.of(2026, 11), {}, model,
-                    LedgerState(loading = false, localRole = viewer, localAvatar = local, memberAvatars = shared))
-            } }
+            compose.setContent {
+                FamilyLedgerTheme {
+                    Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+                        if (!report) QuickEntryScreen(model, LedgerState(loading = false, localRole = "甲", localAvatar = local,
+                            conversationLoad = ConversationLoad.READY), SnackbarHostState(), null, {}, "fixture")
+                        else ReportsScreen(listOf(LedgerEntry("one", EntryType.INCOME, "2026-11-01", 125L, "工资",
+                            account = "现金", member = "甲", recordedBy = "乙")), YearMonth.of(2026, 11), {}, model,
+                            LedgerState(loading = false, localRole = viewer, localAvatar = local, memberAvatars = shared))
+                    }
+                }
+            }
             assertMagentaPhoto()
             compose.runOnIdle { report = true }
             compose.onNodeWithTag("report_section_members").performClick()
             compose.onNodeWithTag("report_list").performScrollToNode(hasText("甲"))
-            assertMagentaPhoto()
+            assertMagentaPhoto(scrollIntoView = true)
             cache.replace(JSONArray().put(photo).put(JSONObject().put("role", "甲").put("avatar", "cat")))
             assertEquals(FamilyAvatarCache.AMBIGUOUS, cache.read("甲")["甲"])
             compose.runOnIdle { viewer = "甲"; shared = cache.read("甲") }
@@ -66,11 +76,16 @@ class FamilyAvatarUiTest {
         }
     }
 
-    private fun assertMagentaPhoto() {
+    private fun assertMagentaPhoto(scrollIntoView: Boolean = false) {
         val image = hasContentDescription("自定义角色头像")
         compose.waitUntil(5000) { compose.onAllNodes(image, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
-        val pixels = compose.onNode(image, useUnmergedTree = true).captureToImage().toPixelMap()
-        val center = pixels[pixels.width / 2, pixels.height / 2]
-        assertTrue(center.red > .9f && center.blue > .9f && center.green < .1f)
+        val node = compose.onNode(image, useUnmergedTree = true)
+        if (scrollIntoView) node.performScrollTo()
+        node.assertIsDisplayed()
+        compose.waitUntil(5000) {
+            val pixels = node.captureToImage().toPixelMap()
+            val center = pixels[pixels.width / 2, pixels.height / 2]
+            center.red > .9f && center.blue > .9f && center.green < .1f
+        }
     }
 }

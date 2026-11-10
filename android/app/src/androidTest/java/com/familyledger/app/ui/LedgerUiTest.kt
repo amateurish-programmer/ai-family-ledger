@@ -50,6 +50,10 @@ class LedgerUiTest {
         compose.onNodeWithText("角色名称").performScrollTo().performTextReplacement("老公")
         compose.onNodeWithText("🐱 小猫").performScrollTo().performClick()
         compose.onNodeWithText("保存角色").performScrollTo().performClick()
+        awaitText("角色头像已保存在本机")
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithText("角色头像已保存在本机").fetchSemanticsNodes().isEmpty()
+        }
         compose.onNodeWithText("记账").performClick()
         awaitText("老公 · 本机账本")
         compose.onNodeWithText("午饭 36.80 元").assertExists()
