@@ -2,10 +2,13 @@ package com.familyledger.app.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -15,6 +18,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -64,8 +69,9 @@ private enum class SettingsRoute(val title: String, val subtitle: String) {
         SettingsRoute.DIAGNOSTICS -> diagnosticsScroll
     }
     var rollback by remember { mutableStateOf<ImportBatch?>(null) }
-    var role by rememberSaveable(state.localRole) { mutableStateOf(state.localRole) }
-    var avatar by rememberSaveable(state.localAvatar) { mutableStateOf(state.localAvatar) }
+    var role by rememberSaveable(state.identityOwner, state.localRole) { mutableStateOf(state.localRole) }
+    var avatar by rememberSaveable(state.identityOwner, state.localAvatar) { mutableStateOf(state.localAvatar) }
+    var avatarPickerOwner by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(focusUpdates) {
         if (focusUpdates) {
             routeName = SettingsRoute.UPDATES.name
@@ -75,6 +81,12 @@ private enum class SettingsRoute(val title: String, val subtitle: String) {
     BackHandler(enabled = route != SettingsRoute.HOME) { routeName = SettingsRoute.HOME.name }
 
     // These launchers and the pending export effect must outlive secondary-page navigation.
+    val pickAvatar = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        val owner = avatarPickerOwner
+        if (uri != null && owner != null) model.previewAvatar(resolver, uri, owner)
+        avatarPickerOwner = null
+        model.finishDocumentPicker(uri == null)
+    }
     val importExcel = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { model.previewImport(resolver, it) }; model.finishDocumentPicker(uri == null)
     }
@@ -110,7 +122,10 @@ private enum class SettingsRoute(val title: String, val subtitle: String) {
                 SettingsRoute.ROLE -> {
                     LedgerPanel(accent = true) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            ProfileBadge(IdentityProfile.avatars.firstOrNull { it.id == avatar } ?: IdentityProfile.avatars.first())
+                            val preview = state.avatarPreview
+                            if (preview != null) {
+                                Image(preview.asImageBitmap(), "待保存的图片头像", Modifier.size(40.dp).clip(CircleShape))
+                            } else RoleAvatar(avatar)
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Text(role.ifBlank { "我的角色" }, style = MaterialTheme.typography.titleLarge)
                                 Text(state.cloudStatus?.email ?: "本机角色 · 账目默认归属", style = MaterialTheme.typography.bodySmall,
@@ -127,17 +142,28 @@ private enum class SettingsRoute(val title: String, val subtitle: String) {
                         IdentityProfile.avatars.chunked(3).forEach { choices ->
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 choices.forEach { choice ->
-                                    FilterChip(selected = avatar == choice.id, onClick = { avatar = choice.id },
+                                    FilterChip(selected = state.avatarPreview == null && avatar == choice.id,
+                                        onClick = { model.discardAvatarPreview(); avatar = choice.id },
                                         enabled = !state.busy, label = { Text("${choice.symbol} ${choice.label}") },
                                         modifier = Modifier.weight(1f).heightIn(min = 48.dp))
                                 }
                             }
                         }
+                        OutlinedButton(onClick = {
+                            model.launchDocumentPicker {
+                                avatarPickerOwner = state.identityOwner
+                                pickAvatar.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            }
+                        }, enabled = !state.busy && !state.loading && !state.documentPickerOpen,
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("从相册选择图片") }
                     }
                     Button(onClick = { model.setLocalIdentity(role, avatar) },
-                        enabled = !state.busy && role.isNotBlank() && (role.trim() != state.localRole || avatar != state.localAvatar),
+                        enabled = !state.busy && role.isNotBlank() &&
+                            (role.trim() != state.localRole || avatar != state.localAvatar || state.avatarPreview != null ||
+                                (state.cloudStatus?.familyId != null && state.cloudStatus.email != null &&
+                                    state.localRole !in state.memberAvatars)),
                         modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp)) { Text("保存角色") }
-                    SettingsNote("更改角色不会修改已有记录，也不会改变家庭权限。")
+                    SettingsNote("加入家庭后，保存的头像会同步给家人。更改角色不会修改已有记录或家庭权限。")
                     SectionHeading("家庭账号与同步")
                     LedgerPanel {
                         SettingsAction(Icons.Outlined.PeopleOutline, "管理家庭账号与同步",

@@ -90,3 +90,5 @@ begin
 end;
 $$;
 rollback;
+
+\ir family_member_avatars.sql

@@ -1,6 +1,7 @@
 package com.familyledger.app.data
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -74,11 +75,40 @@ class CloudService(context: Context) {
     }
 
     fun localAvatar(): String = synchronized(stateGuard) { IdentityProfile.avatar(config.getString(avatarKey(), null)) }
-    fun setLocalAvatar(value: String) = synchronized(stateGuard) {
-        check(config.edit().putString(avatarKey(), IdentityProfile.avatar(value)).commit()) { "头像保存失败" }
+    fun setLocalAvatar(value: String) = synchronized(stateGuard) { setLocalIdentity(localRole(), value) }
+    fun setLocalIdentity(role: String, avatar: String, expectedOwner: String = conversationOwner(), photo: Bitmap? = null) = synchronized(stateGuard) {
+        check(expectedOwner == conversationOwner()) { "账号已改变，请重新选择头像" }
+        val roleKey = roleKey()
+        val avatarKey = avatarKey()
+        val oldRole = config.getString(roleKey, null)
+        val oldAvatar = config.getString(avatarKey, null)
+        val checkedRole = ChatCodec.role(role)
+        val selected = IdentityProfile.avatar(avatar)
+        require(!IdentityProfile.isPhotoAvatar(selected) || selected == oldAvatar) { "请选择本角色的头像" }
+        val saved = photo?.let { LocalAvatarImages.write(appContext, it) } ?: selected
+        val pendingKey = "avatarPublishPending:$expectedOwner"
+        val oldPending = config.getBoolean(pendingKey, false)
+        if (!config.edit().putString(roleKey, checkedRole).putString(avatarKey, saved)
+                .putBoolean(pendingKey, true).commit()) {
+            // SharedPreferences updates its in-memory map even when its disk write fails.
+            config.edit().putString(roleKey, oldRole).putString(avatarKey, oldAvatar).putBoolean(pendingKey, oldPending).commit()
+            error("角色和头像保存失败")
+        }
+        val retained = config.all.filterKeys { it.startsWith("localAvatar:") }.values.filterIsInstance<String>().toSet()
+        LocalAvatarImages.removeUnreferenced(appContext, retained)
     }
-    fun setLocalIdentity(role: String, avatar: String) = synchronized(stateGuard) {
-        check(config.edit().putString(roleKey(), ChatCodec.role(role)).putString(avatarKey(), IdentityProfile.avatar(avatar)).commit()) { "角色和头像保存失败" }
+
+    fun previewAvatar(resolver: android.content.ContentResolver, uri: android.net.Uri): Bitmap {
+        require(uri.scheme == android.content.ContentResolver.SCHEME_CONTENT) { "请使用系统图片选择器" }
+        try {
+            return requireNotNull(resolver.openInputStream(uri)) { "图片已无法读取，请重新选择" }.use {
+                LocalAvatarImages.decode(appContext, it)
+            }
+        } catch (_: java.io.IOException) {
+            throw IllegalArgumentException("图片已无法读取，请重新选择")
+        } catch (_: SecurityException) {
+            throw IllegalArgumentException("图片读取授权已失效，请重新选择")
+        }
     }
 
     private fun ensureBuiltInConfiguration() {
@@ -140,6 +170,36 @@ class CloudService(context: Context) {
     }
 
     suspend fun refreshFamily(): Unit = operation { version -> recoverFamily(version, required = false); Unit }
+
+    fun cachedMemberAvatars(): Map<String, String> = synchronized(stateGuard) {
+        val session = readState()
+        if (!session.has("access") || session.optString("familyId").isBlank()) emptyMap()
+        else FamilyAvatarCache(appContext, session.getString("user"), session.getString("familyId")).read(localRole())
+    }
+
+    suspend fun syncMemberAvatars(): Unit = operation { version ->
+        val session = state(version)
+        if (!session.has("access") || session.optString("familyId").isBlank()) return@operation
+        val user = session.getString("user")
+        val family = session.getString("familyId")
+        val pendingKey = "avatarPublishPending:$user"
+        if (config.getBoolean(pendingKey, false)) {
+            val (role, avatar) = synchronized(stateGuard) { localRole() to localAvatar() }
+            val body = JSONObject().put("p_family", family).put("p_role", role)
+            if (IdentityProfile.isPhotoAvatar(avatar)) {
+                val file = LocalAvatarImages.file(appContext, avatar) ?: error("请重新导入角色头像")
+                require(file.length() in 1..65536L) { "头像文件大小异常" }
+                body.put("p_avatar", "photo").put("p_photo", java.util.Base64.getEncoder().encodeToString(file.readBytes()))
+            } else body.put("p_avatar", avatar).put("p_photo", JSONObject.NULL)
+            rpc("set_my_member_avatar", body, version)
+            synchronized(stateGuard) {
+                checkEpoch(version)
+                if (role == localRole() && avatar == localAvatar()) config.edit().remove(pendingKey).apply()
+            }
+        }
+        val rows = JSONArray(rpc("get_family_member_avatars", JSONObject().put("p_family", family), version))
+        FamilyAvatarCache(appContext, user, family).replace(rows)
+    }
 
     suspend fun updateFamilyProfile(name: String, icon: String): Unit = operation { version ->
         val checkedName = IdentityProfile.familyName(name)

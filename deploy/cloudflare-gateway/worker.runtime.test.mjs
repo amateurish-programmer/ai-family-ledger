@@ -42,6 +42,29 @@ test('workerd preserves original RPC JSON integers and authorization', async () 
   assert.equal(response.status, 200);
   assert.equal(await response.text(), payload);
 });
+test('workerd forwards member avatars through the authenticated, uncached RPC routes', async () => {
+  const photo = Buffer.alloc(65536, 0xff).toString('base64');
+  const family = '95000000-0000-4000-8000-000000000001';
+  const member = { user_id: '94000000-0000-4000-8000-000000000001', role: '成员', avatar: 'photo', photo };
+  for (const [name, body, reply] of [
+    ['set_my_member_avatar', { p_family: family, p_role: member.role, p_avatar: member.avatar, p_photo: photo }, member],
+    ['get_family_member_avatars', { p_family: family }, [member]],
+  ]) {
+    const route = '/rest/v1/rpc/' + name;
+    upstream = async request => {
+      assert.equal(request.url, 'https://xdgeybztysuvvwagqkvb.supabase.co' + route);
+      assert.equal(request.headers.get('authorization'), 'Bearer fixture');
+      assert.equal(request.headers.get('apikey'), 'sb_publishable_fixture');
+      assert.equal(await request.text(), JSON.stringify(body));
+      return RuntimeResponse.json(reply);
+    };
+    const response = await runtime.dispatchFetch('https://gateway.example' + route, { method: 'POST',
+      body: JSON.stringify(body), headers: { Authorization: 'Bearer fixture', apikey: 'sb_publishable_fixture' } });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(await response.json(), reply);
+  }
+});
 test('workerd rejects unknown-length responses over the Android limit', async () => {
   upstream = async () => new RuntimeResponse(byteStream(24 * 1024 * 1024), { headers: { 'Content-Type': 'application/json' } });
   const response = await runtime.dispatchFetch('https://gateway.example/rest/v1/rpc/get_my_family', { method: 'POST' });

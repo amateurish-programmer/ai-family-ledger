@@ -61,4 +61,36 @@ class ReportMemberDetailsTest {
             assertEquals(amount, selected.fold(0L) { total, entry -> Math.addExact(total, entry.amountMinor) })
         }
     }
+
+    @Test fun memberIncomeTotalsAndFilteredDetailsUseOwnerTypeAndExactMinorUnits() {
+        val salary = row("salary", "2026-09-03", 9_000_000_001L).copy(
+            type = EntryType.INCOME, categoryL1 = "工资", categoryL2 = "基本工资")
+        val rows = listOf(salary, salary.copy(id = "bonus", categoryL2 = "奖金", amountMinor = 2),
+            salary.copy(id = "gift", categoryL1 = "礼金", amountMinor = 4),
+            salary.copy(id = "other", member = "爸爸", recordedBy = "妈妈", amountMinor = 8),
+            salary.copy(id = "expense", type = EntryType.EXPENSE, amountMinor = 16),
+            salary.copy(id = "adjust", type = EntryType.BALANCE_ADJUSTMENT),
+            salary.copy(id = "deleted", deletedAt = 1), salary.copy(id = "foreign", currency = "USD"),
+            salary.copy(id = "old", occurredOn = "2026-08-31"), salary.copy(id = "future", occurredOn = "2026-10-01"))
+        val report = buildReport(rows, LocalDate.parse("2026-09-03"), ReportPeriod.MONTH)
+        assertEquals(listOf(CategoryTotal("妈妈", 9_000_000_007L), CategoryTotal("爸爸", 8)), report.memberIncomes)
+        assertEquals(listOf(CategoryTotal("妈妈", 16)), report.members)
+        assertEquals(listOf("bonus", "salary"), reportMemberEntries(rows, "妈妈", report.range, "工资", EntryType.INCOME).map { it.id })
+        assertEquals(listOf("expense"), reportMemberEntries(rows, "妈妈", report.range, "工资").map { it.id })
+        assertTrue(report.text().contains("成员收入\n妈妈：¥ 90000000.07"))
+    }
+
+    @Test fun memberIncomeDetailsFollowAllFourReportPeriods() {
+        val income = row("base", "2026-10-01", 1).copy(type = EntryType.INCOME)
+        val rows = listOf(income, income.copy(id = "week", occurredOn = "2026-10-04", amountMinor = 2),
+            income.copy(id = "month", occurredOn = "2026-10-31", amountMinor = 4),
+            income.copy(id = "year", occurredOn = "2026-12-31", amountMinor = 8),
+            income.copy(id = "later", occurredOn = "2027-01-01", amountMinor = 16))
+        for ((period, amount) in mapOf(ReportPeriod.DAY to 1L, ReportPeriod.WEEK to 3L,
+            ReportPeriod.MONTH to 7L, ReportPeriod.YEAR to 15L)) {
+            val report = buildReport(rows, LocalDate.parse("2026-10-01"), period)
+            assertEquals(amount, report.memberIncomes.single().amount)
+            assertEquals(amount, reportMemberEntries(rows, "妈妈", report.range, "生活", EntryType.INCOME).sumOf { it.amountMinor })
+        }
+    }
 }

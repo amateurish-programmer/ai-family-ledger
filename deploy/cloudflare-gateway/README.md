@@ -22,3 +22,5 @@ wrangler pages deploy --project-name family-ledger-gateway --branch main --commi
 APK 仍由原 GitHub Actions 发布到 Supabase，原工具验证成功后更新清单及清理旧包。新发布无需重部署入口。免费额度或网络失败时，本机记录继续保留。首次升级方式和验收边界见 [V1.9.2](../../docs/V1.9.2.md)。
 
 V1.9.3 在 Wi-Fi 使用此入口；纯移动网络保留原 Supabase 直连。选择只影响新请求目标，不改变账号、项目身份或服务器权限。移动网络 Pages 新版大包复验超时而原地址成功，详见 [V1.9.3](../../docs/V1.9.3.md)。
+
+家庭成员头像通过 `POST /rest/v1/rpc/set_my_member_avatar` 和 `POST /rest/v1/rpc/get_family_member_avatars` 共享。两者都要求传入预期家庭 UUID 参数 `p_family`，由数据库确认调用者仍属于该家庭。网关透传当前账号的 Authorization 并禁用缓存。部署新客户端前，先在原项目应用 `20261110094738_family_member_avatars.sql`，再从此目录生成并部署 Pages，使 Wi-Fi 和移动网络均可访问这两个接口。旧客户端继续使用原有接口。

@@ -32,16 +32,18 @@ data class PeriodTotal(val period: String, val income: Long, val expense: Long)
 
 /** Member reports describe ownership, never the authenticated recorder. */
 fun reportMemberEntries(entries: List<LedgerEntry>, member: String, range: ReportRange,
-    categoryL1: String? = null): List<LedgerEntry> =
-    entries.filter { it.deletedAt == null && it.currency == "CNY" && it.type == EntryType.EXPENSE &&
+    categoryL1: String? = null, type: EntryType = EntryType.EXPENSE): List<LedgerEntry> {
+    require(type == EntryType.EXPENSE || type == EntryType.INCOME)
+    return entries.filter { it.deletedAt == null && it.currency == "CNY" && it.type == type &&
         it.member == member && (categoryL1 == null || it.categoryL1 == categoryL1) &&
         it.occurredOn >= range.start.toString() && it.occurredOn < range.endExclusive.toString() }
         .sortedWith(compareByDescending<LedgerEntry> { it.occurredOn }.thenBy { it.id })
+}
 data class LedgerReport(val period: String, val summary: Summary, val previousExpense: Long,
     val members: List<CategoryTotal>, val incomeSources: List<CategoryTotal>,
     val trend: List<PeriodTotal>, val count: Int,
     val range: ReportRange,
-    val kind: ReportPeriod = ReportPeriod.MONTH) {
+    val kind: ReportPeriod = ReportPeriod.MONTH, val memberIncomes: List<CategoryTotal> = emptyList()) {
     val trendTitle: String get() = when (kind) {
         ReportPeriod.DAY -> "近七日趋势（含所选日）"
         ReportPeriod.WEEK -> "本周每日趋势"
@@ -61,6 +63,8 @@ data class LedgerReport(val period: String, val summary: Summary, val previousEx
         incomeSources.forEach { appendLine("${it.name}：¥ ${Money.format(it.amount)}") }
         appendLine("\n成员支出")
         members.forEach { appendLine("${it.name}：¥ ${Money.format(it.amount)}") }
+        appendLine("\n成员收入")
+        memberIncomes.forEach { appendLine("${it.name}：¥ ${Money.format(it.amount)}") }
         appendLine("\n$trendTitle（收入 / 支出）")
         trend.forEach { appendLine("${it.period}：¥ ${Money.format(it.income)} / ¥ ${Money.format(it.expense)}") }
         appendLine("\n结余不代表账户余额；余额变更不计收支。")
@@ -87,13 +91,14 @@ fun buildReport(entries: List<LedgerEntry>, date: LocalDate, period: ReportPerio
         ReportPeriod.MONTH -> "${date.year} 年 ${date.monthValue} 月"
         ReportPeriod.YEAR -> "${date.year} 年"
     }
-    return LedgerReport(label,
-        summarize(entries, start, end), summarize(entries, previous, start).expense,
-        rows.filter { it.type == EntryType.EXPENSE }.groupBy { it.member }.map { (name, list) ->
-            CategoryTotal(name, list.fold(0L) { sum, e -> Math.addExact(sum, e.amountMinor) })
-        }.sortedByDescending { it.amount },
-        rows.filter { it.type == EntryType.INCOME }.groupBy { it.categoryL1 }.map { (name, list) ->
-            CategoryTotal(name, list.fold(0L) { sum, e -> Math.addExact(sum, e.amountMinor) })
-        }.sortedByDescending { it.amount },
-        trend, rows.count { it.type != EntryType.BALANCE_ADJUSTMENT }, period.range(date), period)
+    val income = rows.filter { it.type == EntryType.INCOME }
+    val expense = rows.filter { it.type == EntryType.EXPENSE }
+    fun totals(rowsOfType: List<LedgerEntry>, key: (LedgerEntry) -> String): List<CategoryTotal> =
+        rowsOfType.groupBy(key).map { (name, group) ->
+            CategoryTotal(name, group.fold(0L) { sum, entry -> Math.addExact(sum, entry.amountMinor) })
+        }.sortedByDescending { it.amount }
+    return LedgerReport(label, summarize(entries, start, end), summarize(entries, previous, start).expense,
+        members = totals(expense) { it.member }, incomeSources = totals(income) { it.categoryL1 },
+        trend = trend, count = expense.size + income.size, range = period.range(date), kind = period,
+        memberIncomes = totals(income) { it.member })
 }

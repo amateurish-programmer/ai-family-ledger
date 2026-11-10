@@ -7,7 +7,8 @@ const MAX_MANIFEST = 32 * 1024;
 const MAX_APK = 50 * 1024 * 1024;
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const RPC = new Set(['create_family', 'join_family', 'create_invite', 'get_my_family',
-  'update_family_profile', 'get_ledger_manifest', 'put_ledger_entries', 'put_ledger_entry']);
+  'update_family_profile', 'get_family_member_avatars', 'set_my_member_avatar',
+  'get_ledger_manifest', 'put_ledger_entries', 'put_ledger_entry']);
 function headers() {
   return new Headers({ 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
 }

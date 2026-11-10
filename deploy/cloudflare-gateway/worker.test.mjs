@@ -55,7 +55,8 @@ test('only known Auth, recovery, family, sync and AI operations are exposed', as
     ['PUT', '/auth/v1/user'], ['POST', '/auth/v1/logout?scope=local'],
     ['POST', '/auth/v1/token?grant_type=refresh_token'], ['POST', '/functions/v1/ledger-ai'],
     ...['create_family','join_family','create_invite','get_my_family','update_family_profile',
-      'get_ledger_manifest','put_ledger_entries'].map(name => ['POST', '/rest/v1/rpc/' + name]),
+      'get_family_member_avatars','set_my_member_avatar','get_ledger_manifest','put_ledger_entries'
+    ].map(name => ['POST', '/rest/v1/rpc/' + name]),
   ]) assert.equal((await worker.fetch(new Request(base + path, { method }))).status, 200, path);
 });
 
@@ -70,11 +71,13 @@ test('arbitrary targets, admin, other buckets, query injection and wrong methods
   for (const path of ['/auth/v1/admin/users','/rest/v1/rpc/unknown','/functions/v1/other',
     '/updates/../private/latest.json','/updates/latest.json?url=https://evil.invalid',
     '/auth/v1/token?grant_type=password&grant_type=refresh_token',
+    '/rest/v1/rpc/get_family_member_avatars?family_id=other','/rest/v1/member_avatars',
     '/rest/v1/ledger_entries?select=*&family_id=eq.fixture',
     '/storage/v1/object/public/other/latest.json']) {
     assert.equal((await worker.fetch(new Request(base + path))).status, 404, path);
   }
   assert.equal((await worker.fetch(new Request(base + '/auth/v1/signup'))).status, 405);
+  assert.equal((await worker.fetch(new Request(base + '/rest/v1/rpc/set_my_member_avatar'))).status, 405);
 });
 
 test('manifest and APK use only the original bucket and strip credentials', async () => {

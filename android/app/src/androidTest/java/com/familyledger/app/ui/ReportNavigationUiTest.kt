@@ -185,7 +185,8 @@ class ReportNavigationUiTest {
             }
         }
         compose.onNodeWithTag("report_section_members").performClick()
-        compose.onNodeWithText("妈妈").performClick()
+        compose.onNodeWithTag("report_list").performScrollToNode(hasTestTag("report_member_2"))
+        compose.onNodeWithTag("report_member_2").assertTextContains("妈妈").performClick()
         compose.onNodeWithText("合计 ¥ 1.23 · 1 笔").assertIsDisplayed()
         compose.onNodeWithText("2026-09-01 · 支出 ¥ 1.23").assertIsDisplayed()
         compose.onNodeWithText("生活 · 妈妈 · 现金").assertIsDisplayed()
@@ -310,6 +311,95 @@ class ReportNavigationUiTest {
         compose.onNodeWithTag("report_member_0").performClick()
         compose.onNodeWithText("成员支出明细 · 2026 年 10 月").assertIsDisplayed()
         compose.onNodeWithText("合计 ¥ 0.08 · 1 笔").assertIsDisplayed()
+    }
+
+    @Test fun fourReportGroupsExpandIndependentlyAndKeepStateAcrossSections() {
+        val income = entry("income", "2026-09-03", 403)
+        val expense = income.copy(id = "expense", type = EntryType.EXPENSE, amountMinor = 101)
+        compose.setContent {
+            FamilyLedgerTheme {
+                ReportContent(listOf(income, expense), YearMonth.of(2026, 9), {}, false, false,
+                    null, null, { _, _ -> }, {}, {})
+            }
+        }
+        fun reveal(tag: String): SemanticsNodeInteraction {
+            compose.onNodeWithTag("report_list").performScrollToNode(hasTestTag(tag))
+            return compose.onNodeWithTag(tag).assertIsDisplayed()
+        }
+        fun assertGroup(tag: String, expanded: Boolean) = reveal(tag).assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, if (expanded) "已展开" else "已折叠"))
+        val expenseCategory = "report_expense_category_heading"
+        val incomeCategory = "report_income_source_heading"
+        val expenseMember = "report_member_heading"
+        val incomeMember = "report_member_income_heading"
+        compose.onNodeWithTag("report_section_categories").performClick()
+        assertGroup(expenseCategory, true)
+        reveal("report_expense_category_0")
+        assertGroup(incomeCategory, true)
+        reveal("report_income_source_0")
+        reveal(expenseCategory).performClick()
+        compose.onNodeWithTag("report_expense_category_0").assertDoesNotExist()
+        reveal("report_income_source_0")
+        compose.onNodeWithTag("report_section_members").performClick()
+        assertGroup(expenseMember, true)
+        assertGroup(incomeMember, true)
+        reveal(incomeMember).performClick()
+        compose.onNodeWithTag("report_member_income_0").assertDoesNotExist()
+        reveal("report_member_0")
+        compose.onNodeWithTag("report_section_categories").performClick()
+        assertGroup(expenseCategory, false)
+        assertGroup(incomeCategory, true).performClick()
+        assertGroup(expenseCategory, false).performClick()
+        reveal("report_expense_category_0")
+        assertGroup(incomeCategory, false)
+        compose.onNodeWithTag("report_section_members").performClick()
+        assertGroup(incomeMember, false)
+        assertGroup(expenseMember, true).performClick()
+        assertGroup(incomeMember, false).performClick()
+        reveal("report_member_income_0")
+        assertGroup(expenseMember, false)
+    }
+
+    @Test fun memberIncomeSheetFiltersCategoriesAndClosesOnPeriodChange() {
+        val income = entry("salary", "2026-09-03", 403).copy(categoryL1 = "工资", member = "妈妈")
+        var month by mutableStateOf(YearMonth.of(2026, 9))
+        var rows by mutableStateOf(listOf(income, income.copy(id = "gift", categoryL1 = "礼金", amountMinor = 102),
+            income.copy(id = "expense", type = EntryType.EXPENSE, amountMinor = 799),
+            income.copy(id = "other", member = "爸爸", recordedBy = "妈妈", amountMinor = 300),
+            income.copy(id = "next", occurredOn = "2026-10-01", amountMinor = 901)))
+        compose.setContent {
+            FamilyLedgerTheme {
+                ReportContent(rows, month, { month = it }, false, false, null, null, { _, _ -> }, {}, {})
+            }
+        }
+        fun openIncome() {
+            compose.onNodeWithTag("report_list").performScrollToNode(hasTestTag("report_member_income_0"))
+            compose.onNodeWithTag("report_member_income_0").assertTextContains("妈妈").performClick()
+        }
+        compose.onNodeWithTag("report_section_members").performClick()
+        openIncome()
+        compose.onNodeWithText("成员收入明细 · 2026 年 9 月").assertIsDisplayed()
+        compose.onNodeWithText("收入分类：全部分类").assertIsDisplayed()
+        compose.onNodeWithText("合计 ¥ 5.05 · 2 笔").assertIsDisplayed()
+        compose.onNodeWithTag("member_category_filter").performClick()
+        compose.onNodeWithText("工资").performClick()
+        compose.onNodeWithText("合计 ¥ 4.03 · 1 笔").assertIsDisplayed()
+        compose.onNodeWithText("2026-09-03 · 收入 ¥ 4.03").assertIsDisplayed()
+        compose.onNodeWithText("2026-09-03 · 支出 ¥ 7.99").assertDoesNotExist()
+        compose.runOnIdle { rows = rows.filterNot { it.id == "salary" } }
+        compose.onNodeWithText("合计 ¥ 0.00 · 0 笔").assertIsDisplayed()
+        compose.onNodeWithText("本期该分类暂无收入。").assertIsDisplayed()
+        compose.onNodeWithText("关闭").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("member_detail").fetchSemanticsNodes().isEmpty() }
+        // 妈妈 now ranks below 爸爸. Reopening clears the old filter.
+        compose.onNodeWithTag("report_list").performScrollToNode(hasTestTag("report_member_income_1"))
+        compose.onNodeWithTag("report_member_income_1").assertTextContains("妈妈").performClick()
+        compose.onNodeWithText("收入分类：全部分类").assertIsDisplayed()
+        compose.runOnIdle { month = YearMonth.of(2026, 10) }
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("member_detail").fetchSemanticsNodes().isEmpty() }
+        openIncome()
+        compose.onNodeWithText("成员收入明细 · 2026 年 10 月").assertIsDisplayed()
+        compose.onNodeWithText("合计 ¥ 9.01 · 1 笔").assertIsDisplayed()
     }
 
     @Test fun detailAnalysisRequiresDisclosureConfirmation() {

@@ -1,6 +1,7 @@
 package com.familyledger.app.ui
 
 import android.content.ContentResolver
+import android.graphics.Bitmap
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -14,6 +15,7 @@ import kotlinx.coroutines.sync.withLock
 enum class ConversationLoad { LOADING, READY, FAILED }
 
 data class LedgerState(val entries: List<LedgerEntry> = emptyList(), val loading: Boolean = true,
+    val memberAvatars: Map<String, String> = emptyMap(),
     val busy: Boolean = false, val syncing: Boolean = false, val message: String? = null, val restorePreview: List<LedgerEntry>? = null,
     val savedEntryId: String? = null, val importPreview: ImportPreview? = null,
     val selectedImportKeys: Set<String> = emptySet(), val batches: List<ImportBatch> = emptyList(),
@@ -26,7 +28,7 @@ data class LedgerState(val entries: List<LedgerEntry> = emptyList(), val loading
     val cloudStatus: CloudStatus? = null, val cloudConflicts: List<CloudConflict> = emptyList(), val inviteCode: String? = null,
     val reportText: String? = null, val reportKey: String? = null, val cloudOpen: Boolean = false,
     val autoSync: Boolean = false, val operationStatus: String? = null, val localAvatar: String = "person", val documentPickerOpen: Boolean = false, val spreadsheetExportReady: Boolean = false,
-    val chatSending: Boolean = false)
+    val chatSending: Boolean = false, val identityOwner: String = "local", val avatarPreview: Bitmap? = null)
 
 typealias LedgerSyncAction = suspend (List<LedgerEntry>, suspend (List<LedgerEntry>) -> Unit, (String) -> Unit) -> SyncResult
 
@@ -185,7 +187,21 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
     fun consumeSavedEntry() { mutableState.update { it.copy(savedEntryId = null) } }
     fun updateChatInput(value: String) { if (value.length <= 2000) mutableState.update { it.copy(chatInput = value) } }
     fun setLocalRole(value: String) = perform { requireCloud().setLocalRole(value); refreshCloud() }
-    fun setLocalIdentity(role: String, avatar: String) = perform { requireCloud().setLocalIdentity(role, avatar); refreshCloud() }
+    fun previewAvatar(resolver: ContentResolver, uri: Uri, pickerOwner: String) = performDocument {
+        val service = requireCloud()
+        check(service.conversationOwner() == pickerOwner) { "账号已改变，请重新选择头像" }
+        val preview = withContext(Dispatchers.IO) { service.previewAvatar(resolver, uri) }
+        check(service.conversationOwner() == pickerOwner) { "账号已改变，请重新选择头像" }
+        mutableState.update { it.copy(avatarPreview = preview) }
+    }
+    fun discardAvatarPreview() { mutableState.update { it.copy(avatarPreview = null) } }
+    fun setLocalIdentity(role: String, avatar: String) = perform {
+        val draft = state.value
+        withContext(Dispatchers.IO) { requireCloud().setLocalIdentity(role, avatar, draft.identityOwner, draft.avatarPreview) }
+        refreshCloud()
+        discardAvatarPreview()
+        publishSavedAvatar()
+    }
     private suspend fun chatMessage(user: Boolean, text: String, context: String = text, drafts: List<LedgerEntry> = state.value.quickDrafts) {
         val message = ChatMessage(java.util.UUID.randomUUID().toString(), user, text, context)
         repository.appendChat(chatOwner ?: error("对话尚未加载，请重新打开应用"), message, drafts)
@@ -269,8 +285,30 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
     fun createInvite() = perform { val code = requireCloud().createInvite(); mutableState.update { it.copy(inviteCode = code) } }
     private fun refreshCloud() {
         try { val status = cloud?.status(); val role = cloud?.localRole() ?: "本人"; val avatar = cloud?.localAvatar() ?: "person"
-            mutableState.update { it.copy(cloudStatus = status, localRole = role, localAvatar = avatar) } }
-        catch (e: Exception) { mutableState.update { it.copy(cloudStatus = null, message = e.message ?: "云端状态读取失败，本机账本可继续使用") } }
+            val owner = cloud?.conversationOwner() ?: "local"
+            val avatars = cloud?.cachedMemberAvatars().orEmpty()
+            mutableState.update { it.copy(cloudStatus = status, memberAvatars = avatars, localRole = role, localAvatar = avatar, identityOwner = owner,
+                avatarPreview = it.avatarPreview.takeIf { _ -> it.identityOwner == owner }) } }
+        catch (e: Exception) { mutableState.update { it.copy(cloudStatus = null, memberAvatars = emptyMap(), message = e.message ?: "云端状态读取失败，本机账本可继续使用") } }
+    }
+    private suspend fun publishSavedAvatar() {
+        val status = state.value.cloudStatus
+        if (status?.email == null || status.familyId == null) {
+            mutableState.update { it.copy(message = "角色头像已保存在本机") }
+            return
+        }
+        try {
+            requireCloud().syncMemberAvatars()
+            refreshCloud()
+            mutableState.update { it.copy(message = "角色已保存，头像已共享给家人") }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { mutableState.update { it.copy(message = "角色已保存在本机，请稍后同步家庭头像") } }
+    }
+
+    suspend fun fetchMemberAvatars() {
+        if (state.value.cloudStatus?.email == null || state.value.cloudStatus?.familyId == null) return
+        requireCloud().syncMemberAvatars()
+        refreshCloud()
     }
     fun setAutoSync(enabled: Boolean) = perform { requireCloud().setAutoSyncEnabled(enabled); mutableState.update { it.copy(autoSync = enabled) } }
     fun onForeground() {
@@ -281,7 +319,14 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
     }
     fun syncCloud() = perform(syncing = true) {
         val result = runSync()
-        mutableState.update { it.copy(message = result.compactMessage()) }
+        try {
+            fetchMemberAvatars()
+            mutableState.update { it.copy(message = result.compactMessage()) }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) {
+            val ledgerResult = result.compactMessage() ?: "账本同步完成"
+            mutableState.update { it.copy(message = "$ledgerResult。家庭头像暂未刷新，请稍后重试") }
+        }
     }
     private suspend fun runSync(): SyncResult {
         val result = syncAction(repository.allEntries(), repository::applyRemote,

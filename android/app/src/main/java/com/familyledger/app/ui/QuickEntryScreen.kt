@@ -30,7 +30,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.familyledger.app.domain.EntryType
 import com.familyledger.app.domain.Money
-import com.familyledger.app.data.IdentityProfile
 import com.familyledger.app.data.ChatMessage
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.filterNotNull
@@ -57,7 +56,7 @@ internal fun chatSendEnabled(state: LedgerState): Boolean =
         Column(Modifier.fillMaxWidth().zIndex(1f).background(MaterialTheme.colorScheme.background).testTag("chat_header")) {
             Row(Modifier.fillMaxWidth().padding(horizontal = style.pagePadding, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ProfileBadge(IdentityProfile.familyIcons.first { it.id == (state.cloudStatus?.familyIcon ?: "home") })
+                RoleAvatar(state.localAvatar)
                 Column(Modifier.weight(1f)) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("家庭账本", style = MaterialTheme.typography.titleLarge, modifier = Modifier.align(Alignment.CenterVertically))
@@ -234,8 +233,11 @@ internal fun chatSendEnabled(state: LedgerState): Boolean =
         items(visibleMessages, key = { "chat:message:${it.id}" }) { message ->
             Column(Modifier.fillMaxWidth(), horizontalAlignment = if (message.user) Alignment.End else Alignment.Start,
                 verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(if (message.user) localRole else "账本助手",
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(if (message.user) localRole else "账本助手",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (message.user) RoleAvatar(localAvatar, Modifier.size(26.dp))
+                }
                 Surface(color = if (message.user) MaterialTheme.colorScheme.primaryContainer else if (style.compact) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLowest,
                     shape = if (style.journal || style.compact) MaterialTheme.shapes.medium else if (message.user) RoundedCornerShape(20.dp, 5.dp, 20.dp, 20.dp) else RoundedCornerShape(5.dp, 20.dp, 20.dp, 20.dp),
                     border = if (style.journal) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null,

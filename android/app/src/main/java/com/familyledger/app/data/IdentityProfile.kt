@@ -19,7 +19,9 @@ object IdentityProfile {
     fun familyIcon(value: String?): String = (value ?: "home").also {
         require(familyIcons.any { option -> option.id == it }) { "请选择列表中的家庭图标" }
     }
+    private val photoAvatar = Regex("photo-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")
+    fun isPhotoAvatar(value: String): Boolean = photoAvatar.matches(value)
     fun avatar(value: String?): String = (value ?: "person").also {
-        require(avatars.any { option -> option.id == it }) { "请选择列表中的角色头像" }
+        require(avatars.any { option -> option.id == it } || isPhotoAvatar(it)) { "请选择有效的角色头像" }
     }
 }
