@@ -1,6 +1,6 @@
 package com.familyledger.app.data
 
-import com.familyledger.app.domain.LedgerEntry
+import com.familyledger.app.domain.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -15,28 +15,52 @@ object FinanceConversation {
         rows: List<LedgerEntry>, lastSync: String,
         onQuery: () -> Unit = {}, ai: suspend (String, JSONObject) -> String,
     ): ChatResult {
+        val localQuery = ChatCodec.privateCarQuery(text, today, role, messages)
+        if (localQuery != null) {
+            onQuery()
+            return analyzeQueries(text, today, messages, rows, lastSync, listOf(localQuery), ai = ai)
+        }
         val history = ConversationMemory.history(messages)
         val memory = ConversationMemory.memory(messages)
         val finance = withContext(Dispatchers.Default) { FinanceContext.build(rows, today, lastSync) }
         val input = JSONObject().put("text", text).put("today", today.toString()).put("role", role)
-            .put("history", history).put("memory", memory).put("analysisV2", true)
+            .put("history", history).put("memory", memory).put("analysisV2", true).put("queryV3", true)
             .put("finance", finance).put("giftFields", true)
-            .put("members", JSONArray(rows.map { it.member }.distinct().take(20)))
-            .put("categories", JSONArray(rows.flatMap { listOf(it.categoryL1, it.categoryL2) }.filter { it.isNotBlank() }.distinct().take(20)))
+            .put("members", JSONArray(rows.map { it.member }.filter(String::isNotBlank).distinct().take(200)))
+            .put("categories", JSONArray(rows.flatMap { listOf(it.categoryL1, it.categoryL2) }.filter { it.isNotBlank() }.distinct().take(200)))
+            .put("categoryTree", categoryTree(rows))
         val result = ChatCodec.decode(ai("chat", boundedInput("chat", input)), role)
         val queries = result.queries.ifEmpty { listOfNotNull(result.query) }
-        if (queries.isEmpty()) return result
+        if (queries.isEmpty()) return result.copy(entries = result.entries.map { CategoryCatalog.normalize(it, rows) })
         onQuery()
-        val selected = withContext(Dispatchers.Default) { FinanceContext.buildQueries(rows, today, lastSync, queries) }
+        return analyzeQueries(text, today, messages, rows, lastSync, queries, ai = ai)
+    }
+
+    internal fun categoryTree(rows: List<LedgerEntry>): JSONArray = JSONArray(
+        listOf(EntryType.EXPENSE, EntryType.INCOME).flatMap { type ->
+            CategoryCatalog.canonicalChoices(type, rows).map { (parent, children) ->
+                JSONObject().put("type", type.name).put("category", parent).put("subcategories", JSONArray(children))
+            }
+        }
+    )
+
+    suspend fun analyzeQueries(
+        text: String, today: LocalDate, messages: List<ChatMessage>, rows: List<LedgerEntry>, lastSync: String,
+        queries: List<ChatQuery>, suppliedFinance: JSONObject? = null,
+        ai: suspend (String, JSONObject) -> String,
+    ): ChatResult {
+        require(queries.isNotEmpty() && queries.size <= 4)
+        val selected = suppliedFinance ?: withContext(Dispatchers.Default) { FinanceContext.buildQueries(rows, today, lastSync, queries) }
         val answer = try {
-            ai("analyze", boundedInput("analyze", JSONObject().put("text", text).put("history", history).put("memory", memory)
-                .put("analysisV2", true).put("finance", selected)))
+            ai("analyze", boundedInput("analyze", JSONObject().put("text", text)
+                .put("history", ConversationMemory.history(messages)).put("memory", ConversationMemory.memory(messages))
+                .put("analysisV2", true).put("queryV3", true).put("finance", selected)))
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            "AI 解读暂未完成：${e.message ?: "服务暂不可用"}。以下为程序计算的查询结果：\n\n" +
+            "以下为程序计算的查询结果，AI 解读可稍后重试。\n\n" +
                 withContext(Dispatchers.Default) { queries.joinToString("\n\n") { ChatCodec.answer(it, rows) } }
         }
-        return result.copy(reply = answer, query = null, queries = queries)
+        return ChatResult(reply = answer, entries = emptyList(), query = null, queries = queries)
     }
 
     /** Limit UTF-8 bytes, not characters. Never truncate current text, filters or computed facts. */

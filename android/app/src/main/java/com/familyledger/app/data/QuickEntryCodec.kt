@@ -40,8 +40,8 @@ object QuickEntryCodec {
                 else -> "其他支出"
             }
             val account = listOf("支付宝", "微信", "现金", "银行卡").firstOrNull { it in segment } ?: "未指定"
-            validateEntry(LedgerEntry(UUID.randomUUID().toString(), if (income) EntryType.INCOME else EntryType.EXPENSE,
-                date, money, category, account = account, member = "本人", recordedBy = "本人", note = segment))
+            CategoryCatalog.normalize(validateEntry(LedgerEntry(UUID.randomUUID().toString(), if (income) EntryType.INCOME else EntryType.EXPENSE,
+                date, money, category, account = account, member = "本人", recordedBy = "本人", note = segment)))
         }
     }
 
@@ -58,10 +58,10 @@ object QuickEntryCodec {
                 require(isGift || counterparty.isEmpty()) { "非礼金不能指定往来人" }
                 val type = EntryType.valueOf(field("type"))
                 require(type != EntryType.BALANCE_ADJUSTMENT) { "AI 不能创建余额变更" }
-                validateEntry(LedgerEntry(UUID.randomUUID().toString(), type, validateDate(field("date")), Money.parse(field("amount")),
+                CategoryCatalog.normalize(validateEntry(LedgerEntry(UUID.randomUUID().toString(), type, validateDate(field("date")), Money.parse(field("amount")),
                     field("category"), field("subcategory"), field("account"), field("member"), field("recordedBy"),
                     field("merchant"), field("project"), field("note"),
-                    isGift = isGift, counterparty = counterparty))
+                    isGift = isGift, counterparty = counterparty)))
             }
         } catch (e: IllegalArgumentException) { throw e
         } catch (_: Exception) { throw IllegalArgumentException("AI 返回内容不符合记账格式，请修改原文后重试") }

@@ -50,6 +50,33 @@ class LedgerRepository(private val database: LedgerDatabase) {
         valid.size
     }
 
+    suspend fun confirmCategoryChanges(originals: List<LedgerEntry>, replacements: List<LedgerEntry>): Int = database.withTransaction {
+        val ids = originals.map { it.id }.toSet()
+        require(originals.isNotEmpty() && ids.size == originals.size && ids.all { it.isNotBlank() } &&
+            replacements.size == originals.size && replacements.map { it.id }.toSet() == ids) {
+            "分类提案与选中记录不一致"
+        }
+        val current = dao.all().associateBy { it.id }
+        require(originals.all { it.deletedAt == null && current[it.id]?.toEntry() == it }) {
+            "记录已修改或删除，请重新预览历史分类"
+        }
+        val proposals = replacements.associateBy { it.id }
+        val now = System.currentTimeMillis()
+        val valid = originals.map { original ->
+            val replacement = proposals.getValue(original.id)
+            require(replacement.copy(categoryL1 = original.categoryL1, categoryL2 = original.categoryL2) == original) {
+                "历史分类整理只能修改分类"
+            }
+            val checked = validateEntry(replacement)
+            require(checked.categoryL1 != original.categoryL1 || checked.categoryL2 != original.categoryL2) {
+                "分类未变化，请重新预览"
+            }
+            EntryEntity.from(original.copy(categoryL1 = checked.categoryL1, categoryL2 = checked.categoryL2, updatedAt = now))
+        }
+        valid.forEach { dao.save(it) }
+        valid.size
+    }
+
     suspend fun allEntries(): List<LedgerEntry> = dao.all().map { it.toEntry() }
     suspend fun applyRemote(rows: List<LedgerEntry>) = database.withTransaction {
         val valid = rows.map { EntryEntity.from(validateEntry(it)) }

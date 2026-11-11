@@ -32,12 +32,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.familyledger.app.domain.*
+import com.familyledger.app.data.ChatQuery
 import java.time.LocalDate
 import java.time.YearMonth
 
 @Composable
 fun ReportsScreen(entries: List<LedgerEntry>, month: YearMonth, onMonth: (YearMonth) -> Unit,
-    model: LedgerViewModel, state: LedgerState, onOrganizeGifts: () -> Unit = {}) {
+    model: LedgerViewModel, state: LedgerState, onOrganizeGifts: () -> Unit = {}, onChatOpened: () -> Unit = {}) {
     val context = LocalContext.current
     LaunchedEffect(state.identityOwner, state.cloudStatus?.familyId) {
         try { model.fetchMemberAvatars() }
@@ -50,12 +51,15 @@ fun ReportsScreen(entries: List<LedgerEntry>, month: YearMonth, onMonth: (YearMo
         model.finishDocumentPicker(cancelled = uri == null)
     }
     ReportContent(entries, month, onMonth, state.syncing, state.busy, state.reportKey, state.reportText,
-        onAnalyze = { report, key -> model.analyzeReport(report, key) },
+        onAnalyze = { report, key -> model.analyzeReport(report, key); onChatOpened() },
         onExport = { report ->
             exportText = report.text()
             model.launchDocumentPicker { export.launch("家庭账本-${report.period}-${report.kind.label}.txt") }
         }, onOrganizeGifts = onOrganizeGifts, localRole = state.localRole, localAvatar = state.localAvatar,
-        memberAvatars = state.memberAvatars)
+        memberAvatars = state.memberAvatars, onAnalyzeScope = { report, query ->
+            model.analyzeReport(report, "${report.period}|${report.kind}|${state.entries.hashCode()}", query)
+            onChatOpened()
+        })
 }
 
 private enum class ReportSection(val label: String, val tag: String) {
@@ -77,7 +81,8 @@ private enum class ReportDetailKind(val label: String, val type: EntryType, val 
 internal fun ReportContent(entries: List<LedgerEntry>, month: YearMonth, onMonth: (YearMonth) -> Unit,
     syncing: Boolean, busy: Boolean, aiReportKey: String?, aiReportText: String?,
     onAnalyze: (LedgerReport, String) -> Unit, onExport: (LedgerReport) -> Unit, onOrganizeGifts: () -> Unit,
-    localRole: String = "本人", localAvatar: String = "person", memberAvatars: Map<String, String> = emptyMap()) {
+    localRole: String = "本人", localAvatar: String = "person", memberAvatars: Map<String, String> = emptyMap(),
+    onAnalyzeScope: ((LedgerReport, ChatQuery) -> Unit)? = null) {
     var periodName by rememberSaveable { mutableStateOf(ReportPeriod.MONTH.name) }
     var selectedDay by rememberSaveable {
         mutableStateOf((if (month == YearMonth.now()) LocalDate.now() else month.atDay(1)).toString())
@@ -96,6 +101,7 @@ internal fun ReportContent(entries: List<LedgerEntry>, month: YearMonth, onMonth
     val style = LocalLedgerStyle.current
     val sectionStates = rememberSaveableStateHolder()
     var requestAi by remember { mutableStateOf(false) }
+    var pendingAnalysisQuery by remember { mutableStateOf<ChatQuery?>(null) }
     fun chooseDate(date: LocalDate) {
         selectedDay = date.toString()
         onMonth(YearMonth.from(date))
@@ -187,11 +193,8 @@ internal fun ReportContent(entries: List<LedgerEntry>, month: YearMonth, onMonth
                                 }
                                 Text("看看钱花在了哪里，结合消费明细给出收支建议。", style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Button(onClick = { requestAi = true }, enabled = !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                                Button(onClick = { pendingAnalysisQuery = null; requestAi = true }, enabled = !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                                     Text("AI 解读本期报告")
-                                }
-                                if (aiReportKey == reportKey && aiReportText != null) {
-                                    AssistantMessage(aiReportText, Modifier.fillMaxWidth().animateContentSize())
                                 }
                             }
                         }
@@ -252,10 +255,23 @@ internal fun ReportContent(entries: List<LedgerEntry>, month: YearMonth, onMonth
             }
         }
     }
-    selectedDetail?.let { name -> ReportDetailSheet(name, ReportDetailKind.valueOf(selectedDetailKind), entries, complete.range, complete.period) { selectedDetail = null } }
+    selectedDetail?.let { name ->
+        ReportDetailSheet(name, ReportDetailKind.valueOf(selectedDetailKind), entries, complete.range, complete.period,
+            onAnalyze = if (onAnalyzeScope == null) null else { query ->
+                selectedDetail = null
+                pendingAnalysisQuery = query
+                requestAi = true
+            }, onClose = { selectedDetail = null })
+    }
     if (requestAi) AlertDialog(onDismissRequest = { requestAi = false }, title = { Text("解读本期消费明细？") },
-        text = { Text("将发送本期及对照期间统计，以及本期最多 40 笔收支的日期、金额、分类、成员、商家和备注节选，用于分析消费并给出建议。记录较多时优先大额收支，再补最近记录；不发送账户字段。") },
-        confirmButton = { TextButton(onClick = { requestAi = false; onAnalyze(complete, reportKey) }) { Text("生成解读") } },
+        text = { Text(if (pendingAnalysisQuery == null)
+            "将在记账聊天中分析。将发送本期及对照期间统计，以及最多 40 笔收支的日期、金额、分类、成员、商家和备注节选。"
+            else "将在记账聊天中分析当前期间、成员及分类的统计。可以继续追问或查看本机完整明细。") },
+        confirmButton = { TextButton(onClick = {
+            requestAi = false
+            val query = pendingAnalysisQuery
+            if (query != null && onAnalyzeScope != null) onAnalyzeScope(complete, query) else onAnalyze(complete, reportKey)
+        }) { Text("生成解读") } },
         dismissButton = { TextButton(onClick = { requestAi = false }) { Text("取消") } })
 }
 
@@ -293,7 +309,7 @@ private fun CategoryRankCard(index: Int, category: CategoryTotal, total: Long, i
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ReportDetailSheet(name: String, kind: ReportDetailKind, entries: List<LedgerEntry>, range: ReportRange,
-    periodLabel: String, onClose: () -> Unit) {
+    periodLabel: String, onAnalyze: ((ChatQuery) -> Unit)? = null, onClose: () -> Unit) {
     var selectedCategory by rememberSaveable(name, kind, range) { mutableStateOf<String?>(null) }
     var choosingCategory by remember { mutableStateOf(false) }
     val categories = remember(entries, name, kind, range) {
@@ -334,6 +350,14 @@ private fun ReportDetailSheet(name: String, kind: ReportDetailKind, entries: Lis
             }
             Text("合计 ¥ ${Money.format(total)} · ${rows.size} 笔", style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold, fontFamily = style.moneyFontFamily)
+            if (onAnalyze != null) OutlinedButton(onClick = {
+                onAnalyze(ChatQuery(range.start.toString(), range.endExclusive.toString(),
+                    if (kind.isMember) name else "", if (kind.isMember) selectedCategory.orEmpty() else name, "",
+                    label = "$periodLabel $name${selectedCategory?.let { " · $it" }.orEmpty()}${kind.type.label}".take(100),
+                    type = kind.type.name, categoryLevel = "L1"))
+            }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("analyze_detail_in_chat")) {
+                Text("在聊天中分析")
+            }
             key(name, kind, range, selectedCategory) {
             LazyColumn(Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 440.dp).testTag(kind.detailTag),
                 verticalArrangement = Arrangement.spacedBy(14.dp)) {

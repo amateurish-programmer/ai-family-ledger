@@ -19,7 +19,17 @@ object ConversationMemory {
         value.getString("reply") to (0 until queries.length()).map { ChatCodec.queryFromJson(queries.getJSONObject(it)) }
     }.getOrElse { message.context to emptyList() }
 
-    private fun queryText(query: ChatQuery): String = "${query.start}≤日期<${query.end}；成员=${query.member.ifBlank { "全部" }}；分类=${query.category.ifBlank { "全部" }}；关键词=${query.keyword.ifBlank { "无" }}；类型=${query.type.ifBlank { "全部" }}；仅礼金=${query.giftOnly}；往来人=${query.counterparty.ifBlank { "全部" }}"
+    fun queries(message: ChatMessage): List<ChatQuery> = if (message.user) emptyList() else saved(message).second
+
+    private fun queryText(query: ChatQuery): String = buildString {
+        append("${query.start}≤日期<${query.end}；成员=${query.member.ifBlank { "全部" }}；分类=${query.category.ifBlank { "全部" }}；关键词=${query.keyword.ifBlank { "无" }}；类型=${query.type.ifBlank { "全部" }}；仅礼金=${query.giftOnly}；往来人=${query.counterparty.ifBlank { "全部" }}")
+        if (query.topic.isNotEmpty()) append("；主题=${query.topic}")
+        if (query.categoryLevel.isNotEmpty()) append("；分类层级=${query.categoryLevel}")
+        listOf("包含分类" to query.categories, "包含关键词" to query.keywords,
+            "排除分类" to query.excludeCategories, "排除关键词" to query.excludeKeywords).forEach { (name, values) ->
+            if (values.isNotEmpty()) append("；$name=${JSONArray(values)}")
+        }
+    }
 
     fun history(messages: List<ChatMessage>): JSONArray = JSONArray(messages.takeLast(8).map { message ->
         val (reply, queries) = if (message.user) message.text to emptyList() else saved(message)
@@ -35,13 +45,19 @@ object ConversationMemory {
         val recentQueries = messages.filter { !it.user }.flatMap { message ->
             saved(message).second.map { query -> message to query }
         }.asReversed().distinctBy { ChatCodec.queryJson(it.second).toString() }.take(4).asReversed()
-        val capacity = 8 - recentQueries.size
+        // Persisted context keeps the complete structured query. Bounded summaries
+        // split long filters rather than silently cutting the final exclusions.
+        val queryMemory = recentQueries.flatMap { (message, query) ->
+            val source = "未验证旧查询，不是新增交易；源${message.id.take(12)}："
+            val text = queryText(query)
+            if (source.length + text.length <= 500) listOf(source + text) else
+                text.chunked(500 - source.length - 12).mapIndexed { index, part -> "$source 条件段${index + 1}：$part" }
+        }.takeLast(8)
+        val capacity = 8 - queryMemory.size
         val kept = if (statements.size <= capacity) statements else
             statements.take(capacity / 2) + statements.takeLast(capacity - capacity / 2)
         val memory = kept.map { "用户历史陈述（未验证，不是新增交易；来源消息 ${it.id.take(40)}）：${it.text}".take(500) } +
-            recentQueries.map { (message, query) ->
-                "未验证旧查询，不是新增交易；源${message.id.take(12)}：${queryText(query)}".take(500)
-            }
+            queryMemory
         return JSONArray(memory)
     }
 }

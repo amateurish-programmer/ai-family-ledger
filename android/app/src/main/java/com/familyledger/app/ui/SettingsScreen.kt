@@ -171,6 +171,10 @@ private enum class SettingsRoute(val title: String, val subtitle: String) {
                     }
                 }
                 SettingsRoute.HISTORY -> {
+                    LedgerPanel {
+                        SettingsAction(Icons.Outlined.Category, "整理历史分类", "先预览分类对照，再确认修改", !state.busy && !state.loading,
+                            model::openCategoryReview)
+                    }
                     SettingsNote("Excel 适合整理与查看，换机请使用完整备份。")
                     LedgerPanel {
                         SettingsAction(Icons.Outlined.FileUpload, "导入随手记 Excel", ".xlsx · 人民币 · 先预览再导入", !state.busy && !state.loading) {

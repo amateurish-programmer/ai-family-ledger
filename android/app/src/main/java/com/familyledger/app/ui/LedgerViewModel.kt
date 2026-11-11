@@ -23,6 +23,7 @@ data class LedgerState(val entries: List<LedgerEntry> = emptyList(), val loading
     val giftHistoryOpen: Boolean = false, val giftCategories: List<GiftCategory> = emptyList(),
     val selectedGiftCategories: Set<GiftCategory> = emptySet(), val giftProposals: List<GiftHistoryProposal>? = null,
     val giftAnalyzing: Boolean = false,
+    val categoryReviewOpen: Boolean = false,
     val chatMessages: List<ChatMessage> = emptyList(), val chatInput: String = "", val localRole: String = "本人",
     val conversationKey: String = "loading", val conversationLoad: ConversationLoad = ConversationLoad.LOADING,
     val cloudStatus: CloudStatus? = null, val cloudConflicts: List<CloudConflict> = emptyList(), val inviteCode: String? = null,
@@ -54,6 +55,7 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
     private var preparedSpreadsheet: SpreadsheetExport? = null
     private var giftAnalysisJob: Job? = null
     private var giftAnalysisOwner: String? = null
+    private var categoryReviewOwner: String? = null
 
     fun launchDocumentPicker(launch: () -> Unit) {
         if (state.value.busy || state.value.loading || state.value.documentPickerOpen) return
@@ -356,18 +358,48 @@ class LedgerViewModel(private val repository: LedgerRepository, private val clou
         requireCloud().resolve(conflict, useRemote, repository::applyRemote)
         mutableState.update { it.copy(cloudConflicts = it.cloudConflicts.filterNot { c -> c.id == conflict.id }, message = "冲突已处理") }
     }
-    fun analyzeReport(report: LedgerReport, key: String) = perform {
+    fun openCategoryReview() = perform {
+        categoryReviewOwner = (cloud?.conversationOwner() ?: "local") + ":" + state.value.cloudStatus?.familyId
+        mutableState.update { it.copy(categoryReviewOpen = true) }
+    }
+    fun closeCategoryReview() {
+        if (!state.value.busy) {
+            categoryReviewOwner = null
+            mutableState.update { it.copy(categoryReviewOpen = false) }
+        }
+    }
+    fun confirmCategoryChanges(originals: List<LedgerEntry>, replacements: List<LedgerEntry>) = perform {
+        val owner = (cloud?.conversationOwner() ?: "local") + ":" + state.value.cloudStatus?.familyId
+        require(state.value.categoryReviewOpen && owner == categoryReviewOwner) { "家庭或账号已改变，请重新预览分类" }
+        val count = repository.confirmCategoryChanges(originals, replacements)
+        mutableState.update { it.copy(categoryReviewOpen = false) }
+        categoryReviewOwner = null
+        syncAfterMutation("已整理 $count 笔分类")
+    }
+
+    fun analyzeReport(report: LedgerReport, key: String, query: ChatQuery? = null) = perform(chatSending = true) {
+        restoreConversation()
         val snapshot = state.value
         val currentKey = "${report.period}|${report.kind}|${snapshot.entries.hashCode()}"
         require(currentKey == key) { "账本已更新，请重新生成本期解读" }
+        require(snapshot.quickDrafts.isEmpty()) { "请先确认或移除待保存记录，再分析报告" }
+        require(snapshot.cloudStatus?.email != null && snapshot.cloudStatus.familyId != null) { "请先登录并加入家庭" }
+        val today = java.time.LocalDate.now()
+        val selectedQuery = query ?: ChatQuery(report.range.start.toString(), report.range.endExclusive.toString(), "", "", "",
+            label = "${report.period}家庭收支")
+        val text = "分析${selectedQuery.label.ifBlank { report.period }}，指出最重要的消费变化和可执行建议。"
         val lastSync = snapshot.cloudStatus?.lastSync?.takeIf { it > 0 }?.let {
             java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneId.systemDefault()).toLocalDateTime().toString()
         } ?: "尚未成功同步"
-        val input = withContext(Dispatchers.Default) {
-            ReportAnalysisContext.build(snapshot.entries, report.range.start, report.kind, java.time.LocalDate.now(), lastSync)
-        }
-        val result = requireCloud().ai("report", input)
-        mutableState.update { it.copy(reportKey = key, reportText = result) }
+        val finance = if (query == null) withContext(Dispatchers.Default) {
+            ReportAnalysisContext.build(snapshot.entries, report.range.start, report.kind, today, lastSync).getJSONObject("finance")
+        } else null
+        chatMessage(true, text)
+        mutableState.update { it.copy(operationStatus = "正在解读报告…") }
+        val result = FinanceConversation.analyzeQueries(text, today, snapshot.chatMessages, snapshot.entries, lastSync,
+            listOf(selectedQuery), suppliedFinance = finance, ai = { operation, input -> requireCloud().ai(operation, input) })
+        chatMessage(false, result.reply, ConversationMemory.context(result.reply, result.queries))
+        mutableState.update { it.copy(reportKey = key, reportText = result.reply) }
     }
     fun exportReport(resolver: ContentResolver, uri: Uri, text: String) = performDocument {
         withContext(Dispatchers.IO) {

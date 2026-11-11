@@ -24,7 +24,7 @@ import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable fun EntryEditor(existing: LedgerEntry?, busy: Boolean, snackbar: SnackbarHostState,
-    onClose: () -> Unit, onSave: (LedgerEntry) -> Unit) {
+    onClose: () -> Unit, onSave: (LedgerEntry) -> Unit, categories: List<LedgerEntry> = emptyList()) {
     val id by rememberSaveable { mutableStateOf(existing?.id ?: UUID.randomUUID().toString()) }
     var typeName by rememberSaveable { mutableStateOf((existing?.type ?: EntryType.EXPENSE).name) }
     var amount by rememberSaveable { mutableStateOf(existing?.let { Money.format(it.amountMinor) } ?: "") }
@@ -54,6 +54,8 @@ import java.util.UUID
                             occurredOn = validateDate(date.trim()), amountMinor = if (typeName == EntryType.BALANCE_ADJUSTMENT.name) java.math.BigDecimal(amount.trim()).movePointRight(2).longValueExact() else Money.parse(amount), categoryL1 = category,
                             categoryL2 = subcategory, account = account, member = member, recordedBy = recorder,
                             merchant = merchant, project = project, note = note, origin = existing?.origin,
+                            currency = existing?.currency ?: "CNY", updatedAt = existing?.updatedAt ?: System.currentTimeMillis(),
+                            deletedAt = existing?.deletedAt,
                             isGift = isGift && typeName != EntryType.BALANCE_ADJUSTMENT.name, counterparty = counterparty.trim()))
                         error = null
                         onSave(entry)
@@ -70,9 +72,11 @@ import java.util.UUID
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 listOf(EntryType.EXPENSE, EntryType.INCOME).forEach { type ->
                     FilterChip(selected = typeName == type.name, enabled = !busy, onClick = {
-                        typeName = type.name
-                        category = if (type == EntryType.INCOME) "职业收入" else "食品酒水"
-                        subcategory = ""
+                        if (typeName != type.name) {
+                            typeName = type.name
+                            category = CategoryCatalog.choices(type, categories).keys.first()
+                            subcategory = ""
+                        }
                     }, label = { Text(type.label) })
                 }
             }
@@ -89,8 +93,10 @@ import java.util.UUID
             error?.let { Text(it, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = MaterialTheme.colorScheme.error) }
             SectionHeading("账目详情")
             EditorField("日期 · YYYY-MM-DD", date, busy) { date = it }
-            EditorField("一级分类", category, busy) { category = it }
-            EditorField("二级分类（可选）", subcategory, busy) { subcategory = it }
+            CategoryPicker(EntryType.valueOf(typeName), category, subcategory, categories, !busy) { parent, child ->
+                category = parent
+                subcategory = child
+            }
             EditorField("账户", account, busy) { account = it }
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

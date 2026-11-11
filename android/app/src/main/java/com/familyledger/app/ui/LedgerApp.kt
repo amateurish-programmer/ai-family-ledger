@@ -72,6 +72,15 @@ import java.time.YearMonth
         GiftHistoryScreen(model, state, snackbar, model::closeGiftHistory)
         return
     }
+    if (state.categoryReviewOpen) {
+        key(state.identityOwner, state.cloudStatus?.familyId) {
+            Box(Modifier.fillMaxSize()) {
+                CategoryReviewScreen(state.entries, state.busy, model::closeCategoryReview, model::confirmCategoryChanges)
+                SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(16.dp))
+            }
+        }
+        return
+    }
     if (state.importPreview != null) {
         ImportScreen(model, state, snackbar)
         return
@@ -92,7 +101,7 @@ import java.time.YearMonth
         }
         EntryEditor(existing, state.busy, snackbar,
             onClose = { if (!state.busy) editorKey = null },
-            onSave = model::save)
+            onSave = model::save, categories = state.entries)
         return
     }
 
@@ -115,7 +124,8 @@ import java.time.YearMonth
                     LedgerScreen(state, month, { monthText = it.toString() }, { editorKey = it.id }, model::delete, model::syncCloud)
                 }
                 2 -> chatScreenState.SaveableStateProvider("reports") {
-                    ReportsScreen(state.entries, month, { monthText = it.toString() }, model, state, onOrganizeGifts = model::openGiftHistory)
+                    ReportsScreen(state.entries, month, { monthText = it.toString() }, model, state,
+                        onOrganizeGifts = model::openGiftHistory, onChatOpened = { tab = 0 })
                 }
                 3 -> chatScreenState.SaveableStateProvider("settings") {
                     SettingsScreen(model, state, focusUpdates, onUpdatesFocused = { focusUpdates = false })
@@ -151,7 +161,7 @@ import java.time.YearMonth
 
 internal fun startupUpdateBlocked(state: LedgerState, tab: Int, editorKey: String?, draftEditorKey: String?): Boolean =
     state.busy || state.loading || state.documentPickerOpen || state.spreadsheetExportReady ||
-        state.cloudOpen || state.giftHistoryOpen || state.importPreview != null || state.restorePreview != null || editorKey != null ||
+        state.cloudOpen || state.giftHistoryOpen || state.categoryReviewOpen || state.importPreview != null || state.restorePreview != null || editorKey != null ||
         (tab == 0 && state.quickDrafts.any { it.id == draftEditorKey })
 
 @OptIn(ExperimentalMaterial3Api::class)

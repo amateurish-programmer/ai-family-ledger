@@ -62,6 +62,7 @@ jobs:
           node scripts/check-report-function.mjs
           node scripts/check-finance-chat.mjs
           node scripts/check-finance-v2.mjs
+          node scripts/check-finance-v3.mjs
           node scripts/check-gift-ai.mjs
       - name: Check fixed cloud gateway transport
         working-directory: deploy/cloudflare-gateway

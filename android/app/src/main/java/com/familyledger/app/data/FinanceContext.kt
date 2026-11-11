@@ -75,6 +75,15 @@ object FinanceContext {
             val name = "Q${index + 1}"
             if (query.label.isNotBlank()) fact("$name · 查询标签", query.label)
             fact("$name · 筛选范围", "${query.start} 至 ${LocalDate.parse(query.end).minusDays(1)}；成员=${query.member.ifBlank { "全部" }}；分类=${query.category.ifBlank { "全部" }}；关键词=${query.keyword.ifBlank { "无" }}；类型=${query.type.ifBlank { "全部收支" }}；仅礼金=${query.giftOnly}；往来人=${query.counterparty.ifBlank { "全部" }}")
+            if (query.categoryLevel.isNotEmpty()) fact("$name · 分类层级", query.categoryLevel)
+            if (query.topic == "private_car") {
+                fact("$name · 统计口径", "仅私家车使用和养护；合并新旧汽车分类及明确养车关键词；排除公共交通、打车、购车和车贷。交通费含义不明的记录未计入金额。")
+                fact("$name · 待确认分类笔数", "${ChatCodec.uncertain(query, entries).size} 笔")
+            }
+            listOf("包含分类" to query.categories, "包含关键词" to query.keywords,
+                "排除分类" to query.excludeCategories, "排除关键词" to query.excludeKeywords).forEach { (kind, filters) ->
+                filters.chunked(4).forEachIndexed { part, values -> fact("$name · $kind ${part + 1}", values.joinToString("、")) }
+            }
             fact("$name · 已记录日期", if (rows.isEmpty()) "无记录，不等于实际无收支" else "${rows.minOf { it.occurredOn }} 至 ${rows.maxOf { it.occurredOn }}")
             val end = LocalDate.parse(query.end)
             fact("$name · 期间完整性", when {
@@ -94,17 +103,21 @@ object FinanceContext {
                     .sortedWith(compareByDescending<Pair<String, Long>> { it.second }.thenBy { it.first })
                     .take(2).forEach { (key, value) -> amount("$name · $kind ${key.ifBlank { "未指定" }.take(48)}", value) }
             }
-            listOf("收入" to income, "支出" to expense).forEach { (kind, selected) ->
-                ranked("${kind}分类", selected) { it.categoryL2.ifBlank { it.categoryL1 } }
-                ranked("成员$kind", selected) { it.member }
-                ranked("商家$kind", selected) { it.merchant }
+            if (!ChatCodec.advanced(query)) {
+                listOf("收入" to income, "支出" to expense).forEach { (kind, selected) ->
+                    ranked("${kind}分类", selected) { it.categoryL2.ifBlank { it.categoryL1 } }
+                    ranked("成员$kind", selected) { it.member }
+                    ranked("商家$kind", selected) { it.merchant }
+                }
             }
             val giftsIn = income.filter { it.isGift }
             val giftsOut = expense.filter { it.isGift }
             amount("$name · 礼金收入", total(giftsIn))
             amount("$name · 礼金支出", total(giftsOut))
-            ranked("礼金收入往来人", giftsIn) { it.counterparty }
-            ranked("礼金支出往来人", giftsOut) { it.counterparty }
+            if (!ChatCodec.advanced(query)) {
+                ranked("礼金收入往来人", giftsIn) { it.counterparty }
+                ranked("礼金支出往来人", giftsOut) { it.counterparty }
+            }
             // Only explicit detail requests expose a few selected fields; never notes/accounts/raw rows.
             if (Regex("明细|逐笔|最近交易|交易记录").containsMatchIn(query.label)) {
                 fact("$name · 明细范围", "仅展示最近 ${minOf(5, rows.size)} 笔，共 ${rows.size} 笔；不是完整流水")

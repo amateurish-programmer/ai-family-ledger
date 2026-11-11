@@ -31,6 +31,7 @@ import androidx.compose.ui.zIndex
 import com.familyledger.app.domain.EntryType
 import com.familyledger.app.domain.Money
 import com.familyledger.app.data.ChatMessage
+import com.familyledger.app.data.ConversationMemory
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -47,8 +48,14 @@ internal fun chatSendEnabled(state: LedgerState): Boolean =
     editing: String?, onEditingChange: (String?) -> Unit, conversationKey: String) {
     val draft = state.quickDrafts.firstOrNull { it.id == editing }
     if (draft != null) {
-        key(draft.id) { EntryEditor(draft, state.busy, snackbar, onClose = { onEditingChange(null) }, onSave = { model.updateQuickDraft(it); onEditingChange(null) }) }
+        key(draft.id) { EntryEditor(draft, state.busy, snackbar, onClose = { onEditingChange(null) },
+            onSave = { model.updateQuickDraft(it); onEditingChange(null) }, categories = state.entries) }
         return
+    }
+    var selectedQueryId by rememberSaveable(conversationKey) { mutableStateOf<String?>(null) }
+    state.chatMessages.firstOrNull { it.id == selectedQueryId }?.let { message ->
+        val queries = ConversationMemory.queries(message)
+        if (queries.isNotEmpty()) ChatQueryDetailsSheet(queries, state.entries) { selectedQueryId = null }
     }
     val style = LocalLedgerStyle.current
     Column(Modifier.fillMaxSize().imePadding().clipToBounds()) {
@@ -97,7 +104,7 @@ internal fun chatSendEnabled(state: LedgerState): Boolean =
                             modifier = Modifier.heightIn(min = 48.dp))
                     }
                 }
-            }) {
+            }, onQueryDetails = { selectedQueryId = it.id }) {
             // The reverse list starts with the latest content; visual draft order is unchanged.
             if (state.quickDrafts.size > 1) item(key = "chat:confirm") {
                 Button(onClick = model::saveQuickDrafts, enabled = !state.busy, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
@@ -175,6 +182,7 @@ internal fun chatSendEnabled(state: LedgerState): Boolean =
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberSaveable(conversationKey, saver = LazyListState.Saver) { LazyListState() },
     emptyContent: @Composable () -> Unit = {},
+    onQueryDetails: ((ChatMessage) -> Unit)? = null,
     latestContent: LazyListScope.() -> Unit = {}
 ) {
     val messageIds = remember(messages) { messages.map { it.id } }
@@ -244,6 +252,11 @@ internal fun chatSendEnabled(state: LedgerState): Boolean =
                     modifier = Modifier.widthIn(max = 600.dp).fillMaxWidth(if (message.user) .9f else 1f).animateContentSize()) {
                     if (message.user) SelectionContainer { Text(message.text, Modifier.padding(16.dp), style = MaterialTheme.typography.bodyLarge) }
                     else AssistantMessage(message.text, Modifier.padding(if (style.compact) 2.dp else 16.dp))
+                }
+                if (!message.user && onQueryDetails != null && ConversationMemory.queries(message).isNotEmpty()) {
+                    TextButton(onClick = { onQueryDetails(message) }, modifier = Modifier.testTag("chat_details:${message.id}")) {
+                        Text("查看明细与待核对记录")
+                    }
                 }
             }
         }
