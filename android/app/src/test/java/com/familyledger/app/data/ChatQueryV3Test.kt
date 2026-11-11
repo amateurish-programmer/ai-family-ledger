@@ -149,4 +149,17 @@ class ChatQueryV3Test {
         assertEquals("行车交通", rows.first().categoryL1)
         assertEquals("加油", rows.first().categoryL2)
     }
+    @Test fun scalarAndArrayIncludesAreIndependentConditionsWithinArraysAlternativesRemainOr() {
+        val rows = listOf(row("fuel", "行车交通", "加油", note = "甲", amount = 40),
+            row("parking", "行车交通", "停车", note = "乙", amount = 50))
+        val oil = query(json().put("category", "私家车").put("categories", JSONArray(listOf("油费"))))
+        assertEquals(listOf("fuel"), ChatCodec.select(oil, rows).map { it.id })
+        assertTrue(ChatCodec.answer(oil, rows).contains("¥ 0.40"))
+        val both = query(json().put("category", "私家车").put("categories", JSONArray(listOf("油费", "停车费"))))
+        assertEquals(listOf("fuel", "parking"), ChatCodec.select(both, rows).map { it.id })
+        val keyed = query(json().put("keyword", "甲").put("keywords", JSONArray(listOf("油费", "停车费"))))
+        assertEquals(listOf("fuel"), ChatCodec.select(keyed, rows).map { it.id })
+        val legacyScalarOnly = query(json().put("category", "私家车").put("keyword", "甲"))
+        assertEquals(listOf("fuel"), ChatCodec.select(legacyScalarOnly, rows).map { it.id })
+    }
 }

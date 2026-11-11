@@ -97,8 +97,6 @@ object ChatCodec {
     private fun fields(entry: LedgerEntry) = listOf(entry.note, entry.merchant, entry.project, entry.account, entry.categoryL1, entry.categoryL2)
 
     private fun baseMatch(query: ChatQuery, e: LedgerEntry): Boolean {
-        val categories = query.categories + listOf(query.category).filter(String::isNotBlank)
-        val keywords = query.keywords + listOf(query.keyword).filter(String::isNotBlank)
         // Free-form queries understand old category names through the same
         // conservative suggestions shown in the editor. Explicit report levels
         // keep their saved category identity; neither path rewrites the row.
@@ -113,11 +111,13 @@ object ChatCodec {
         return e.deletedAt == null && e.currency == "CNY" && e.type != EntryType.BALANCE_ADJUSTMENT &&
             e.occurredOn >= query.start && e.occurredOn < query.end &&
             (query.member.isBlank() || e.member == query.member) &&
-            (categories.isEmpty() || categories.any(::categoryMatches)) &&
+            (query.category.isBlank() || categoryMatches(query.category)) &&
+            (query.categories.isEmpty() || query.categories.any(::categoryMatches)) &&
             (query.type.isBlank() || e.type.name == query.type) &&
             (!query.giftOnly || e.isGift) &&
             (query.counterparty.isBlank() || (e.isGift && e.counterparty == query.counterparty)) &&
-            (keywords.isEmpty() || keywords.any { keyword -> text.any { keyword in it } }) &&
+            (query.keyword.isBlank() || text.any { query.keyword in it }) &&
+            (query.keywords.isEmpty() || query.keywords.any { keyword -> text.any { keyword in it } }) &&
             query.excludeCategories.none(::categoryMatches) &&
             query.excludeKeywords.none { keyword -> text.any { keyword in it } }
     }
