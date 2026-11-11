@@ -9,6 +9,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
+import android.os.ParcelFileDescriptor
 import java.io.File
 import java.io.FileOutputStream
 import com.familyledger.app.data.*
@@ -129,6 +130,8 @@ class ChatAnalysisUiTest {
             val bitmap = instrument.uiAutomation.takeScreenshot()
             FileOutputStream(file).use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
             bitmap.recycle()
+            instrument.uiAutomation.executeShellCommand("cp ${file.absolutePath} /data/local/tmp/ledger-screens/${file.name}")
+                .let { ParcelFileDescriptor.AutoCloseInputStream(it).use { stream -> stream.readBytes() } }
         }
     }
 }
