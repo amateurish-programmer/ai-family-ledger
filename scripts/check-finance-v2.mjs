@@ -4,7 +4,7 @@ import { stripTypeScriptTypes } from 'node:module';
 import { runInNewContext } from 'node:vm';
 import assert from 'node:assert/strict';
 
-let handler, outputs = [], requests = [], diagnostics = [], readTimeouts = [], quota = true;
+let handler, outputs = [], requests = [], diagnostics = [], readTimeouts = [], quota = true, quotaChecks = 0;
 let clockOffset = 0, providerElapsed = [];
 class TestDate extends Date { static now() { return Date.now() + clockOffset; } }
 const env = { SUPABASE_URL: 'https://project.example.test', SUPABASE_ANON_KEY: 'fixture-public',
@@ -18,10 +18,13 @@ const sandbox = {
   fetch: async (url, init) => {
     if (url.endsWith('/auth/v1/user')) return Response.json({ id: '00000000-0000-0000-0000-000000000001' });
     if (url.endsWith('/get_my_family')) return Response.json({ id: 'synthetic-family' });
-    if (url.endsWith('/consume_ai_quota')) return Response.json(quota);
-    requests.push({ ...JSON.parse(init.body), timeout: init.signal.timeout });
+    if (url.endsWith('/consume_ai_quota')) { quotaChecks++; return Response.json(quota); }
+    requests.push({ ...JSON.parse(init.body), url, authorization: init.headers.Authorization,
+      redirect: init.redirect, timeout: init.signal.timeout });
     clockOffset += providerElapsed.shift() ?? 0;
     const output = outputs.length > 1 ? outputs.shift() : outputs[0];
+    if (output instanceof Response) return output;
+    if (output instanceof Error) throw output;
     if (output === '__HTTP_503__') return new Response('{}', { status: 503 });
     return Response.json({ choices: [{ finish_reason: 'stop', message: { content: typeof output === 'string' ? output : JSON.stringify(output) } }] });
   },
@@ -78,7 +81,7 @@ for (const [group, amounts, rates] of [
   groupedFact(`${group} 相对 Q1 · ${kind}变化率`, rates[index], true);
 });
 async function call(operation, input, ...generated) {
-  outputs = generated; requests = []; diagnostics = []; readTimeouts = []; clockOffset = 0;
+  outputs = generated; requests = []; diagnostics = []; readTimeouts = []; clockOffset = 0; quotaChecks = 0;
   const response = await handler(new Request('https://project.example.test/functions/v1/ledger-ai', {
     method: 'POST', headers: { Authorization: 'Bearer fixture-token-123456789012345', 'Content-Type': 'application/json' },
     body: JSON.stringify({ operation, input }),
@@ -281,5 +284,123 @@ await check('quota denial prevents any model call', async () => {
   quota = true;
   assert.equal(result.status, 429); assert.equal(requests.length, 0);
 });
-console.log(`Finance V2 regression checks: ${passed} passed, ${failed} failed. No live requests.`);
+const openaiUrl = 'https://api.openai.com/v1/chat/completions';
+const deepseekUrl = 'https://api.deepseek.com/chat/completions';
+const privateMarker = 'fixture-private-upstream-message';
+const upstreamError = (status, code, type = code) => Response.json({ error: { code, type, message: privateMarker } }, { status });
+const destinations = () => requests.map(request => request.url);
+env.OPENAI_PRIMARY_API_KEY = 'fixture-openai';
+env.OPENAI_PRIMARY_MODEL = 'fixture-openai-model';
+
+await check('configured OpenAI is first and gets only its own key and supported parameters', async () => {
+  assert.equal((await call('chat', v2, answer)).status, 200);
+  assert.deepEqual(destinations(), [openaiUrl]);
+  const request = requests[0];
+  assert.equal(request.authorization, 'Bearer fixture-openai');
+  assert.equal(request.model, 'fixture-openai-model');
+  assert.equal(request.max_completion_tokens, 4000);
+  assert.equal(request.response_format.type, 'json_object');
+  assert.equal(request.store, false);
+  assert.equal(request.redirect, 'error');
+  for (const field of ['temperature', 'max_tokens', 'thinking']) assert.equal(field in request, false);
+  assert.equal(quotaChecks, 1);
+});
+for (const code of ['insufficient_quota', 'credit_balance_exhausted', 'organization_spend_limit_exceeded',
+  'project_spend_limit_exceeded', 'organization_usage_limit_exceeded']) {
+  await check(`a confirmed ${code} uses DeepSeek, then the next request starts with OpenAI`, async () => {
+    const result = await call('chat', v2, upstreamError(429, code), answer);
+    assert.equal(result.status, 200);
+    assert.deepEqual(destinations(), [openaiUrl, deepseekUrl]);
+    assert.equal(requests[1].authorization, 'Bearer fixture-provider');
+    assert.equal(requests[1].model, 'fixture-chat');
+    assert.equal(requests[1].thinking.type, 'disabled');
+    assert.deepEqual(requests[1].messages, requests[0].messages);
+    assert.equal(quotaChecks, 1);
+    assert.ok(diagnostics.some(event => event.event === 'ai_provider_fallback'));
+    assert.ok(!JSON.stringify([diagnostics, result.body]).includes(privateMarker));
+    assert.equal((await call('chat', v2, answer)).status, 200);
+    assert.deepEqual(destinations(), [openaiUrl]);
+  });
+}
+await check('the provider switch and response repair share a deadline and stay on DeepSeek', async () => {
+  env.OPENAI_ANALYSIS_MODEL = 'fixture-deepseek-analysis';
+  providerElapsed = [9000, 14000];
+  try {
+    const result = await call('analyze', analysis, upstreamError(429, null, 'insufficient_quota'),
+      'invalid json', { reply: '建议核对账目。', factIds: [] });
+    assert.equal(result.status, 200);
+    assert.deepEqual(destinations(), [openaiUrl, deepseekUrl, deepseekUrl]);
+    assert.deepEqual(requests.map(req => req.model), ['fixture-openai-model', 'fixture-deepseek-analysis', 'fixture-deepseek-analysis']);
+    assert.equal(requests[1].thinking.type, 'enabled');
+    assert.ok(requests[1].timeout <= 36000 && requests[2].timeout <= 22000);
+    assert.equal(quotaChecks, 1);
+  } finally { delete env.OPENAI_ANALYSIS_MODEL; providerElapsed = []; }
+});
+await check('quota exhausted during output repair also switches once', async () => {
+  const result = await call('chat', v2, 'invalid json', upstreamError(429, 'insufficient_quota'), answer);
+  assert.equal(result.status, 200);
+  assert.deepEqual(destinations(), [openaiUrl, openaiUrl, deepseekUrl]);
+  assert.deepEqual(requests[1].messages, requests[2].messages);
+  assert.equal(quotaChecks, 1);
+});
+await check('rate limits, bad keys, server errors and ambiguous errors never send data to the backup', async () => {
+  for (const response of [upstreamError(429, 'rate_limit_exceeded'), upstreamError(429, 'slow_down'),
+    upstreamError(429, 'rate_limit_exceeded', 'insufficient_quota'), upstreamError(401, 'invalid_api_key'),
+    upstreamError(403, 'permission_denied'), upstreamError(503, 'insufficient_quota'),
+    new Response('insufficient_quota', { status: 429 }), upstreamError(429, 'x'.repeat(12000)),
+    new TypeError(privateMarker)]) {
+    const result = await call('chat', v2, response);
+    assert.ok(result.status >= 500);
+    assert.deepEqual(destinations(), [openaiUrl]);
+    assert.ok(!JSON.stringify([result.body, diagnostics]).includes(privateMarker));
+  }
+});
+await check('a failed backup stops and does not loop', async () => {
+  const result = await call('chat', v2, upstreamError(429, 'insufficient_quota'), upstreamError(429, 'insufficient_quota'));
+  assert.ok(result.status >= 500);
+  assert.deepEqual(destinations(), [openaiUrl, deepseekUrl]);
+  assert.equal(quotaChecks, 1);
+});
+await check('no model request starts when the shared budget has expired', async () => {
+  providerElapsed = [26000];
+  try {
+    assert.ok((await call('chat', v2, upstreamError(429, 'insufficient_quota'), answer)).status >= 500);
+    assert.deepEqual(destinations(), [openaiUrl]);
+  } finally { providerElapsed = []; }
+});
+await check('local account quota applies before both providers', async () => {
+  quota = false;
+  try {
+    assert.equal((await call('chat', v2, answer)).status, 429);
+    assert.deepEqual(destinations(), []);
+    assert.equal(quotaChecks, 1);
+  } finally { quota = true; }
+});
+await check('dual mode checks the official DeepSeek origin before sending either credential', async () => {
+  for (const url of ['https://api.deepseek.com.example.test', 'https://api.deepseek.com:8443']) {
+    env.OPENAI_BASE_URL = url;
+    try {
+      assert.equal((await call('chat', v2, answer)).status, 503);
+      assert.deepEqual(destinations(), []);
+    } finally { env.OPENAI_BASE_URL = 'https://api.deepseek.com'; }
+  }
+});
+await check('a key copied into both slots cannot be sent to two providers', async () => {
+  const saved = env.OPENAI_PRIMARY_API_KEY;
+  env.OPENAI_PRIMARY_API_KEY = env.OPENAI_API_KEY;
+  try {
+    assert.equal((await call('chat', v2, answer)).status, 503);
+    assert.deepEqual(destinations(), []);
+  } finally { env.OPENAI_PRIMARY_API_KEY = saved; }
+});
+await check('an incomplete primary configuration stops before either model is called', async () => {
+  for (const setting of ['OPENAI_PRIMARY_MODEL', 'OPENAI_PRIMARY_API_KEY']) {
+    const saved = env[setting]; delete env[setting];
+    try {
+      assert.equal((await call('chat', v2, answer)).status, 503);
+      assert.deepEqual(destinations(), []);
+    } finally { env[setting] = saved; }
+  }
+});
+console.log(`Finance V2 and AI routing regression checks: ${passed} passed, ${failed} failed. No live requests.`);
 if (failed) process.exitCode = 1;

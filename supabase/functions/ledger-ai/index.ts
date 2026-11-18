@@ -46,7 +46,7 @@ async function boundedText(body: ReadableStream<Uint8Array> | null, max: number,
   const deadline = Date.now() + timeout;
   try {
     while (true) {
-      let timer: number | undefined;
+      let timer: ReturnType<typeof setTimeout> | undefined;
       const { value, done } = await Promise.race([
         reader.read(),
         new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new RequestError(408, "数据传输超时")), Math.max(1, deadline - Date.now())); }),
@@ -72,6 +72,70 @@ async function fetchJson(url: string, init: RequestInit, timeout: number, limit:
   }
   return JSON.parse(await boundedText(response.body, limit, Math.max(1, deadline - Date.now())));
 }
+
+type ModelProvider = { kind: "openai" | "deepseek" | "compatible"; url: string; key: string; model: string };
+
+function modelProviders(analysisMode: boolean): { existing: ModelProvider; primary?: ModelProvider } {
+  // Existing deployments use OPENAI_* for their OpenAI-compatible provider, including DeepSeek.
+  const key = Deno.env.get("OPENAI_API_KEY");
+  const model = Deno.env.get("OPENAI_MODEL");
+  if (!key || !model) throw new RequestError(503, "AI 服务尚未配置");
+  let base: URL;
+  try { base = new URL(Deno.env.get("OPENAI_BASE_URL") ?? "https://api.openai.com/v1"); }
+  catch { throw new RequestError(503, "AI 服务配置无效"); }
+  if (base.protocol !== "https:" || base.username || base.password || base.search || base.hash) throw new RequestError(503, "AI 服务配置无效");
+  const existing: ModelProvider = {
+    kind: base.hostname === "api.deepseek.com" ? "deepseek" : "compatible",
+    url: base.href.replace(/\/$/, "") + "/chat/completions", key,
+    model: analysisMode ? Deno.env.get("OPENAI_ANALYSIS_MODEL")?.trim() || model : model,
+  };
+  const primaryKey = Deno.env.get("OPENAI_PRIMARY_API_KEY")?.trim();
+  const primaryModel = Deno.env.get("OPENAI_PRIMARY_MODEL")?.trim();
+  if (!primaryKey && !primaryModel) return { existing };
+  if (!primaryKey || !primaryModel) throw new RequestError(503, "OpenAI 主服务配置不完整");
+  if (base.origin !== "https://api.deepseek.com" || key.trim() === primaryKey) throw new RequestError(503, "AI 双服务配置无效");
+  return { existing, primary: { kind: "openai", url: "https://api.openai.com/v1/chat/completions", key: primaryKey, model: primaryModel } };
+}
+
+class OpenAIQuotaExhausted extends Error {}
+const openAIQuotaCodes = new Set(["insufficient_quota", "credit_balance_exhausted",
+  "organization_spend_limit_exceeded", "project_spend_limit_exceeded", "organization_usage_limit_exceeded"]);
+
+async function exhaustedOpenAIQuota(response: Response, timeout: number): Promise<boolean> {
+  try {
+    const error = JSON.parse(await boundedText(response.body, 8192, Math.min(timeout, 2000)))?.error;
+    return openAIQuotaCodes.has(error?.code ?? error?.type);
+  } catch { return false; }
+}
+
+async function modelCompletion(provider: ModelProvider, messages: Record<string, string>[], maxTokens: number,
+  thinking: boolean, deadline: number, responseLimit: number): Promise<Record<string, unknown>> {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) throw new RequestError(502, "AI 服务超时，请稍后重试");
+  const options = provider.kind === "openai" ? { max_completion_tokens: maxTokens, store: false }
+    : { max_tokens: maxTokens, temperature: 0,
+      ...(provider.kind === "deepseek" ? { thinking: { type: thinking ? "enabled" : "disabled" } } : {}) };
+  let response: Response;
+  try {
+    response = await fetch(provider.url, {
+      method: "POST", redirect: "error", signal: AbortSignal.timeout(remaining),
+      headers: { Authorization: "Bearer " + provider.key, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: provider.model, ...options, response_format: { type: "json_object" }, messages }),
+    });
+  } catch { throw new RequestError(502, "AI 服务暂不可用，请稍后重试"); }
+  const readTimeout = Math.max(1, deadline - Date.now());
+  if (provider.kind === "openai" && response.status === 429) {
+    if (await exhaustedOpenAIQuota(response, readTimeout)) throw new OpenAIQuotaExhausted();
+    throw new RequestError(503, "AI 服务暂时限流，请稍后重试");
+  }
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new RequestError(502, "上游服务暂不可用，请稍后重试");
+  }
+  try { return record(JSON.parse(await boundedText(response.body, responseLimit, readTimeout))); }
+  catch { throw new RequestError(502, "AI 服务响应无效或超时，请稍后重试"); }
+}
+
 function parseInput(input: Record<string, unknown>) {
   keys(input, ["text", "today", ...("giftFields" in input ? ["giftFields"] : [])]);
   if ("giftFields" in input && input.giftFields !== true) throw new RequestError(400, "礼金能力标记无效");
@@ -644,11 +708,11 @@ Deno.serve(async (request: Request): Promise<Response> => {
     const project = Deno.env.get("SUPABASE_URL")?.replace(/\/$/, "");
     const publicKey = Deno.env.get("SUPABASE_ANON_KEY");
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    const providerKey = Deno.env.get("OPENAI_API_KEY");
-    const model = Deno.env.get("OPENAI_MODEL");
-    const endpoint = new URL(Deno.env.get("OPENAI_BASE_URL") ?? "https://api.openai.com/v1");
-    if (!project || !publicKey || !serviceKey || !providerKey || !model) throw new RequestError(503, "AI 服务尚未配置");
-    if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) throw new RequestError(503, "AI 服务配置无效");
+    if (!project || !publicKey || !serviceKey) throw new RequestError(503, "AI 服务尚未配置");
+    const v3 = input.queryV3 === true;
+    const v2 = input.analysisV2 === true || v3;
+    const analysisMode = body.operation === "report" || (body.operation === "analyze" && v2);
+    const providers = modelProviders(analysisMode);
     const headers = { apikey: publicKey, Authorization: auth, "Content-Type": "application/json" };
     // Validate with Auth server, not an unverified locally decoded JWT.
     const user = record(await fetchJson(project + "/auth/v1/user", { headers }, 10000, 65536));
@@ -661,27 +725,29 @@ Deno.serve(async (request: Request): Promise<Response> => {
       body: JSON.stringify({ p_user: uid }),
     }, 10000, 1024);
     if (allowed !== true) throw new RequestError(429, "AI 请求过于频繁或今日额度已用完");
-    const v3 = input.queryV3 === true;
-    const v2 = input.analysisV2 === true || v3;
     const systemPrompt = (body.operation === "gift_history" ? giftHistoryPrompt : body.operation === "parse" ? parsePrompt : body.operation === "chat" ? (v3 ? chatV3Prompt : v2 ? chatV2Prompt : chatPrompt) : body.operation === "analyze" ? (v3 ? analyzeV3Prompt : v2 ? analyzeV2Prompt : analyzePrompt) : input.reportV2 === true ? detailedReportPrompt : reportPrompt) +
       ((body.operation === "chat" || body.operation === "parse") && input.giftFields === true ? giftPrompt : "");
     const initialMessages = [{ role: "system", content: systemPrompt }, { role: "user", content: JSON.stringify(input) }];
-    const analysisMode = body.operation === "report" || (body.operation === "analyze" && v2);
     const configuredInteger = (name: string, fallback: number, min: number, max: number) => {
       const raw = Deno.env.get(name) ?? "";
       return /^\d{1,9}$/.test(raw) ? Math.min(max, Math.max(min, Number(raw))) : fallback;
     };
     const thinking = analysisMode && !["false", "disabled", "0"].includes((Deno.env.get("OPENAI_ANALYSIS_THINKING") ?? "true").toLowerCase());
-    const selectedModel = analysisMode ? (Deno.env.get("OPENAI_ANALYSIS_MODEL")?.trim() || model) : model;
     const maxTokens = analysisMode ? configuredInteger("OPENAI_ANALYSIS_MAX_TOKENS", 8192, 2048, 16384) : body.operation === "chat" ? 4000 : 2500;
-    // Both analysis attempts share the budget; a repair cannot double the timeout.
+    // Provider switching and output repair share the original request's model budget.
     const modelTimeout = analysisMode ? configuredInteger("OPENAI_ANALYSIS_TIMEOUT_MS", 45000, 5000, 45000) : 25000;
     const modelDeadline = Date.now() + modelTimeout;
-    const requestCompletion = async (messages: Record<string, string>[]) => record(await fetchJson(endpoint.toString().replace(/\/$/, "") + "/chat/completions", {
-      method: "POST", headers: { Authorization: "Bearer " + providerKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: selectedModel, temperature: 0, max_tokens: maxTokens, response_format: { type: "json_object" },
-        ...(endpoint.hostname === "api.deepseek.com" ? { thinking: { type: thinking ? "enabled" : "disabled" } } : {}), messages }),
-    }, Math.max(1, modelDeadline - Date.now()), analysisMode ? 262144 : 131072));
+    let provider = providers.primary ?? providers.existing;
+    const requestCompletion = async (messages: Record<string, string>[]) => {
+      const send = () => modelCompletion(provider, messages, maxTokens, thinking, modelDeadline, analysisMode ? 262144 : 131072);
+      try { return await send(); }
+      catch (error) {
+        if (!(error instanceof OpenAIQuotaExhausted)) throw error;
+        provider = providers.existing;
+        console.warn(JSON.stringify({ event: "ai_provider_fallback", from: "openai", to: "deepseek", reason: "quota" }));
+        return send();
+      }
+    };
     const validatedResult = (completion: Record<string, unknown>): string => {
       const choice = record(array(completion.choices, 10)[0]);
       if (choice.finish_reason !== "stop") throw new RequestError(502, "AI 输出未完整生成，请缩短输入后重试");
@@ -704,7 +770,8 @@ Deno.serve(async (request: Request): Promise<Response> => {
       result = validatedResult(initialCompletion);
     } catch (firstError) {
       if (["chat", "analyze", "report"].includes(String(body.operation)) && (firstError instanceof RequestError || firstError instanceof SyntaxError)) {
-        const reason = firstError instanceof SyntaxError ? "json" : /financial_|report_numeric/.test(firstError.message) ? "financial" : "schema";
+        const reason = firstError instanceof RequestError
+          ? (/financial_|report_numeric/.test(firstError.message) ? "financial" : "schema") : "json";
         console.warn(JSON.stringify({ event: "ai_output_repair", operation: body.operation, reason }));
         try {
           result = validatedResult(await requestCompletion([...initialMessages,

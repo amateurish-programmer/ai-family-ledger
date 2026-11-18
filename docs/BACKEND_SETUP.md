@@ -44,6 +44,25 @@ V1.8 分析配置均在服务端设置，手机无需填写，已有 OPENAI_MODE
 
 新 App 发送 analysisV2 能力标记，最多四组查询；原客户端仍使用原三字段 chat 协议。账本事实由客户端整数分计算，分析只返回定性说明与 factIds；服务端把选中事实的原始标签和值附到回复，避免金额与收入/支出标签错配。history 最多八条、每条一千五百字；memory 最多八项、每项五百字，均作为不可信的历史数据，不用于自动生成交易。错误日志只记录固定原因码，不保存提示词、账本或模型原文。
 
+## OpenAI 主用与 DeepSeek 备用
+
+在当前 DeepSeek 部署上启用双服务，只需更新 `ledger-ai` 并增加两项服务端配置，现有 V1.10.2 客户端即可使用。
+
+1. 在仓库根目录运行 `supabase functions deploy ledger-ai --project-ref xdgeybztysuvvwagqkvb`，部署包含双服务逻辑的函数。已有 DeepSeek 地址、密钥和模型沿用原配置。
+2. 在 OpenAI API 平台创建项目密钥，选择该项目可调用且支持 Chat Completions 和 JSON object 输出的模型。[创建 OpenAI 项目密钥](https://platform.openai.com/api-keys) · [OpenAI 接口参数](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create/)
+3. 在记账工具项目的 Edge Function Secrets 中一起添加下表两项。只填一项时，服务会提示配置不完整并停止调用模型。以后如需恢复原有单服务配置，一起移除两项即可。密钥仅保存在服务端。[本项目密钥设置](https://supabase.com/dashboard/project/xdgeybztysuvvwagqkvb/functions/secrets) · [Supabase 密钥说明](https://supabase.com/docs/guides/functions/secrets)
+
+| 新增名称 | 填写内容 |
+| --- | --- |
+| `OPENAI_PRIMARY_API_KEY` | OpenAI 官方 API 项目密钥 |
+| `OPENAI_PRIMARY_MODEL` | 该项目使用的 OpenAI 模型 ID，供记账、查询、报告及分析使用 |
+
+原 `OPENAI_API_KEY` 在本项目存放的是 DeepSeek 密钥，配合 `OPENAI_BASE_URL=https://api.deepseek.com` 和原 `OPENAI_MODEL` 使用。双服务要求两把不同的密钥。OpenAI 的请求固定发往官方入口，DeepSeek 保留自己的模型、思考模式和参数。
+
+每个新请求先尝试 OpenAI。仅当官方入口返回 HTTP 429 且错误码明确表示余额、用量或支出额度耗尽时，当次请求切到 DeepSeek。若需要修正输出格式，也继续使用所选服务。下一次用户操作会再次尝试 OpenAI，因此充值或额度重置后可随下一次请求恢复。额度用尽期间每次操作会多一次失败的 OpenAI 请求。普通限流、密钥错误和网络超时按原服务报错。[OpenAI 错误码](https://developers.openai.com/api/docs/guides/error-codes)
+
+登录、家庭成员校验和应用自己的 AI 配额检查均在调用模型前完成。一次用户请求只消耗一次应用配额，切换与格式修正共用原有模型超时预算。切换日志只记录服务名称和固定的额度分类。运行 `node scripts/check-finance-v2.mjs` 可用合成响应验证超额切换及恢复。
+
 ## 数据、身份与权限
 
 - `families`、`family_members`、`ledger_entries` 均启用 RLS。客户端仅可读取自己的家庭；所有写操作通过明确授权的安全 RPC。`ledger_private` 保存邀请哈希和 AI 配额，不暴露账目写权限。
