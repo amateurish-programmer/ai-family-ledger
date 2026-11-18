@@ -60,3 +60,5 @@ V1.9.2 由固定 Pages 路径转发到原 Supabase app-updates 桶，保留原�
 
 
 V1.9.3 按当前默认网络选路：Wi-Fi/未知网络使用上述 Pages 清单；纯移动网络使用原 `https://xdgeybztysuvvwagqkvb.supabase.co/storage/v1/object/public/app-updates/latest.json`。下载也在新请求开始时选择对应固定根地址。两路使用同一相对路径、清单和 APK，身份与签名校验不变；没有在执行中的请求上自动换路重试。
+
+V1.10.1 在每条新蜂窝网络上检查直连握手，必要时选择同一项目的 Pages 网关。更新清单和 APK 下载共用当前网络的选路结果，安装前继续校验长度、摘要、包名、版本及签名。[移动 5G 验证记录](V1.10.1.md)

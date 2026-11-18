@@ -45,15 +45,27 @@ class NetworkDiagnosticsTest {
         assertEquals("auth_token", diagnosticRequestCategory("/auth/v1/token?grant_type=$sentinel"))
     }
 
-    @Test fun snapshotRouteUsesTheExistingCellularWifiVpnPolicy() {
+    @Test fun snapshotDistinguishesUnprobedCellularFromTheActualRecordedRoute() {
         val cases = listOf(
-            DiagnosticNetworkSnapshot(true, listOf("cellular"), vpn = false) to "supabase",
+            DiagnosticNetworkSnapshot(true, listOf("cellular"), vpn = false) to "pending",
             DiagnosticNetworkSnapshot(true, listOf("wifi"), vpn = false) to "pages",
             DiagnosticNetworkSnapshot(true, listOf("cellular", "vpn"), vpn = true) to "pages",
             DiagnosticNetworkSnapshot(true, listOf("cellular", "wifi"), vpn = false) to "pages",
             DiagnosticNetworkSnapshot(false) to "pages"
         )
         for ((snapshot, route) in cases) assertEquals(route, snapshot.toJson().getString("selectedRoute"))
+        val cellular = cases.first().first
+        for (used in DiagnosticRoute.entries) {
+            val record = DiagnosticRequestRecord.create("/rest/v1/rpc/get_my_family", used,
+                DiagnosticStage.COMPLETE, 200, null, 12, cellular)
+            val stored = DiagnosticRequestRecord.fromJson(record.toJson()).toJson()
+            assertEquals(used.label, stored.getJSONObject("network").getString("selectedRoute"))
+            val old = cellular.toJson().put("selectedRoute", used.label)
+            assertEquals(used.label, DiagnosticNetworkSnapshot.fromJson(old).toJson().getString("selectedRoute"))
+            stored.getJSONObject("network").put("selectedRoute", if (used == DiagnosticRoute.PAGES) "supabase" else "pages")
+            assertEquals(used.label, DiagnosticRequestRecord.fromJson(stored).toJson()
+                .getJSONObject("network").getString("selectedRoute"))
+        }
     }
 
     @Test fun recentRequestsKeepOnlyNewestTwentyAndSurviveAStoreReopen() {

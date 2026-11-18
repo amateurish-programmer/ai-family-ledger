@@ -171,7 +171,10 @@ internal fun readDiagnosticNetwork(context: Context): DiagnosticNetworkSnapshot 
             capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
             capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL),
             !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED),
-            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN), proxy, privateDns)
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN), proxy, privateDns,
+            selectedRoute = if (CloudEndpoint.prefersDirect("cellular" in transports, "wifi" in transports, "vpn" in transports))
+                active?.let(CloudNetwork::cachedDirect)?.let { if (it) DiagnosticRoute.SUPABASE else DiagnosticRoute.PAGES }
+            else DiagnosticRoute.PAGES)
     }
 }
 

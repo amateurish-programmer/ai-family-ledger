@@ -36,11 +36,12 @@ internal data class DiagnosticNetworkSnapshot(
     val vpn: Boolean? = null,
     val proxyConfigured: Boolean? = null,
     val privateDnsMode: String = "unknown",
-    val collection: String = "available"
+    val collection: String = "available",
+    val selectedRoute: DiagnosticRoute? = null
 ) {
     fun toJson(): JSONObject = JSONObject().put("available", available)
-        .put("selectedRoute", if (available && CloudEndpoint.prefersDirect("cellular" in transports,
-            "wifi" in transports, vpn == true || "vpn" in transports)) "supabase" else "pages")
+        .put("selectedRoute", selectedRoute?.label ?: if (available && CloudEndpoint.prefersDirect("cellular" in transports,
+            "wifi" in transports, vpn == true || "vpn" in transports)) "pending" else "pages")
         .put("transports", JSONArray(transports.filter { it in TRANSPORTS }.distinct()))
         .put("validated", validated ?: JSONObject.NULL).put("captivePortal", captivePortal ?: JSONObject.NULL)
         .put("metered", metered ?: JSONObject.NULL).put("vpn", vpn ?: JSONObject.NULL)
@@ -59,7 +60,8 @@ internal data class DiagnosticNetworkSnapshot(
                 (0 until transports.length()).map { transports.optString(it) }.filter { it in TRANSPORTS },
                 boolean("validated"), boolean("captivePortal"), boolean("metered"), boolean("vpn"),
                 boolean("proxyConfigured"), json.optString("privateDnsMode").takeIf { it in DNS_MODES } ?: "unknown",
-                json.optString("collection").takeIf { it in COLLECTIONS } ?: "unavailable")
+                json.optString("collection").takeIf { it in COLLECTIONS } ?: "unavailable",
+                DiagnosticRoute.entries.find { it.label == json.optString("selectedRoute") })
         }
     }
 }
@@ -130,7 +132,7 @@ internal class DiagnosticRequestRecord private constructor(
         fun createCategory(category: String, route: DiagnosticRoute, stage: DiagnosticStage, httpStatus: Int?,
             failure: Throwable?, elapsedMillis: Long, network: DiagnosticNetworkSnapshot): DiagnosticRequestRecord =
             DiagnosticRequestRecord(Instant.now().toString(), category.takeIf { it in requestCategoryLabels } ?: "other",
-                route, stage, httpStatus, failure?.let(::diagnosticFailure), elapsedMillis, network)
+                route, stage, httpStatus, failure?.let(::diagnosticFailure), elapsedMillis, network.copy(selectedRoute = route))
 
         fun fromJson(json: JSONObject): DiagnosticRequestRecord {
             val category = json.getString("category")
@@ -141,7 +143,7 @@ internal class DiagnosticRequestRecord private constructor(
             val status = if (json.isNull("httpStatus")) null else json.getInt("httpStatus").also { require(it in 100..599) }
             return DiagnosticRequestRecord(Instant.parse(json.getString("timeUtc")).toString(), category, route, stage,
                 status, failure, json.getLong("elapsedMillis").coerceIn(0, 86_400_000),
-                DiagnosticNetworkSnapshot.fromJson(json.getJSONObject("network")))
+                DiagnosticNetworkSnapshot.fromJson(json.getJSONObject("network")).copy(selectedRoute = route))
         }
     }
 }

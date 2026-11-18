@@ -20,6 +20,7 @@ import java.net.URL
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.util.UUID
+import kotlin.coroutines.CoroutineContext
 
 /** Public release storage only; never reads credentials, account preferences, or ledger data. */
 class AppUpdateService(context: Context) {
@@ -31,8 +32,15 @@ class AppUpdateService(context: Context) {
 
     suspend fun check(): AppUpdate? = withContext(Dispatchers.IO) {
         val coroutine = currentCoroutineContext()
-        val connection = open(AppUpdate.manifestUrl(CloudNetwork.prefersDirect(context)))
-        try {
+        CloudNetwork.withRoute(context) { direct ->
+            coroutine.ensureActive()
+            readManifest(direct, coroutine)
+        }
+    }
+
+    private fun readManifest(direct: Boolean, coroutine: CoroutineContext): AppUpdate? {
+        val connection = open(AppUpdate.manifestUrl(direct))
+        return try {
             requireResponse(connection, manifest = true)
             val declaredLength = connection.contentLengthLong
             require(declaredLength <= AppUpdateCodec.MAX_MANIFEST_BYTES) { "更新清单过大" }
@@ -53,7 +61,7 @@ class AppUpdateService(context: Context) {
             val text = Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
                 .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes.toByteArray())).toString()
             val update = AppUpdateCodec.parse(text)
-            if (!update.isNewerThan(currentVersionCode)) return@withContext null
+            if (!update.isNewerThan(currentVersionCode)) return null
             require(update.minSdk <= Build.VERSION.SDK_INT) { "新版本需要 Android API ${update.minSdk} 或更高版本" }
             update
         } finally { connection.disconnect() }
@@ -69,26 +77,29 @@ class AppUpdateService(context: Context) {
             directory.listFiles()?.filter { it.name.endsWith(".part") || it.name.endsWith(".apk") }?.forEach { it.delete() }
             val destination = File(directory, "update-${update.versionCode}-${update.sha256.take(12)}.apk")
             val part = File(directory, "${UUID.randomUUID()}.part")
-            val connection = open(update.downloadUrl(CloudNetwork.prefersDirect(context)))
-            try {
-                requireResponse(connection)
-                val declaredLength = connection.contentLengthLong
-                require(declaredLength == -1L || declaredLength == update.sizeBytes) { "安装包响应大小与清单不符" }
-                val deadline = System.nanoTime() + 300_000_000_000L
-                connection.inputStream.use { input ->
-                    UpdateTransfer.copyVerified(input, part, destination, update, {
-                        coroutine.ensureActive()
-                        require(System.nanoTime() < deadline) { "下载超时，请重试" }
-                    }, onProgress)
-                }
+            CloudNetwork.withRoute(context) { direct ->
                 coroutine.ensureActive()
-                verifyForInstall(update, destination)
-                coroutine.ensureActive()
-                destination
-            } catch (error: Throwable) {
-                part.delete(); destination.delete()
-                throw error
-            } finally { connection.disconnect() }
+                val connection = open(update.downloadUrl(direct))
+                try {
+                    requireResponse(connection)
+                    val declaredLength = connection.contentLengthLong
+                    require(declaredLength == -1L || declaredLength == update.sizeBytes) { "安装包响应大小与清单不符" }
+                    val deadline = System.nanoTime() + 300_000_000_000L
+                    connection.inputStream.use { input ->
+                        UpdateTransfer.copyVerified(input, part, destination, update, {
+                            coroutine.ensureActive()
+                            require(System.nanoTime() < deadline) { "下载超时，请重试" }
+                        }, onProgress)
+                    }
+                    coroutine.ensureActive()
+                    verifyForInstall(update, destination)
+                    coroutine.ensureActive()
+                    destination
+                } catch (error: Throwable) {
+                    part.delete(); destination.delete()
+                    throw error
+                } finally { connection.disconnect() }
+            }
         }
     }
 

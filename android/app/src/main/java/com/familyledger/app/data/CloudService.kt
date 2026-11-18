@@ -458,7 +458,11 @@ class CloudService(context: Context) {
 
     private class HttpFailure(val status: Int, message: String) : IllegalStateException(message)
 
-    private fun request(method: String, path: String, body: JSONObject?, bearer: String?, version: Long): String {
+    private fun request(method: String, path: String, body: JSONObject?, bearer: String?, version: Long): String =
+        CloudNetwork.withRoute(appContext) { direct -> send(method, path, body, bearer, version, direct) }
+
+    private fun send(method: String, path: String, body: JSONObject?, bearer: String?, version: Long,
+        preferDirect: Boolean): String {
         val pair = synchronized(stateGuard) {
             checkEpoch(version)
             (config.getString("url", null) ?: error("请先配置 Supabase URL")) to
@@ -467,7 +471,6 @@ class CloudService(context: Context) {
         val base = officialUrl(pair.first)
         require(path.startsWith("/") && !path.startsWith("//"))
         syncMetrics?.takeIf { it.version == version }?.let { it.requests++ }
-        val preferDirect = CloudNetwork.prefersDirect(appContext)
         val diagnostic = CloudRequestDiagnosticTrace.start(appContext, diagnosticRequestCategory(path), preferDirect)
         val connection = try {
             URI(CloudEndpoint.requestUrl(base, path, preferDirect)).toURL().openConnection() as HttpURLConnection
