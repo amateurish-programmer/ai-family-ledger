@@ -68,6 +68,27 @@ class CloudReadRecoveryTest {
         assertSame(eof, result.exceptionOrNull())
     }
 
+    @Test fun connectionSetupLostDuringHandoverRecoversOnlyForReads() = runBlocking {
+        for (failure in listOf(java.net.ConnectException("Failed to connect to test.invalid"),
+            IOException("Failed to connect to test.invalid"))) {
+            var attempts = 0
+            val reply = recoverCloudRead("POST", family, { true }) {
+                if (++attempts == 1) throw failure
+                "family"
+            }
+            assertEquals("family", reply)
+            assertEquals(2, attempts)
+            var writes = 0
+            assertSame(failure, runCatching {
+                recoverCloudRead("POST", "/rest/v1/rpc/put_ledger_entries", { error("unexpected wait") }) {
+                    writes++
+                    throw failure
+                }
+            }.exceptionOrNull())
+            assertEquals(1, writes)
+        }
+    }
+
     @Test fun anHttp401DoesNotGrantAnotherTransportRetry() = runBlocking {
         val tokens = mutableListOf<Boolean>()
         val attempts = mutableListOf<String>()

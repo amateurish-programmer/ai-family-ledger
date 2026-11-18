@@ -8,7 +8,7 @@ import kotlinx.coroutines.ensureActive
 // These RPCs use POST on the wire but only read data in PostgreSQL.
 private val readOnlyRpcs = setOf("/rest/v1/rpc/get_my_family", "/rest/v1/rpc/get_ledger_manifest",
     "/rest/v1/rpc/get_family_member_avatars")
-private val disconnectKinds = setOf("abort", "reset", "eof")
+private val disconnectKinds = setOf("abort", "reset", "eof", "connect")
 
 internal fun isConnectionInterruption(failure: IOException): Boolean =
     diagnosticFailure(failure) in disconnectKinds

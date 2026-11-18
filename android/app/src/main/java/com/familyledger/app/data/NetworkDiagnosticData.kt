@@ -7,6 +7,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
+import java.net.ConnectException
+import java.net.NoRouteToHostException
 import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -86,7 +88,7 @@ private val requestCategories = mapOf(
 ) + listOf("get_my_family", "get_ledger_manifest", "put_ledger_entries", "put_ledger_entry",
     "create_family", "join_family", "create_invite", "update_family_profile").associate { "/rest/v1/rpc/$it" to it }
 private val requestCategoryLabels = requestCategories.values.toSet() + setOf("auth_refresh", "auth_password", "other")
-private val failures = setOf("abort", "reset", "eof", "dns", "timeout", "tls", "io", "other")
+private val failures = setOf("abort", "reset", "eof", "connect", "dns", "timeout", "tls", "io", "other")
 
 /** Only exact public grant names are mapped; arbitrary query values never survive this function. */
 internal fun diagnosticRequestCategory(path: String): String {
@@ -115,6 +117,8 @@ internal fun diagnosticFailure(failure: Throwable): String {
             causes.any { it is SocketException && it.message.orEmpty().contains("reset", ignoreCase = true) } -> "reset"
         causes.any { it is java.io.EOFException } || ioMessageContains("unexpected end of stream") -> "eof"
         causes.any { it is SSLException } -> "tls"
+        causes.any { it is ConnectException || it is NoRouteToHostException ||
+            (it is IOException && it.message.orEmpty().startsWith("Failed to connect to ", ignoreCase = true)) } -> "connect"
         causes.any { it is IOException } -> "io"
         else -> "other"
     }
