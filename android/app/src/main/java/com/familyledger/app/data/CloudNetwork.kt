@@ -18,6 +18,16 @@ internal object CloudNetwork {
 
     fun cachedDirect(network: Network): Boolean? = cellular.cachedDirect(network)
 
+    suspend fun awaitStableDefault(context: Context): Boolean {
+        val manager = context.getSystemService(ConnectivityManager::class.java) ?: return false
+        return awaitSteadyNetwork(current = {
+            val network = manager.activeNetwork
+            val caps = manager.getNetworkCapabilities(network)
+            network?.takeIf { caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true &&
+                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) }
+        })
+    }
+
     private fun currentCellular(manager: ConnectivityManager?): Network? {
         val network = manager?.activeNetwork ?: return null
         val capabilities = manager.getNetworkCapabilities(network) ?: return null

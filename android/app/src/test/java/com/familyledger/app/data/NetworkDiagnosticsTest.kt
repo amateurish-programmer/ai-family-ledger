@@ -132,6 +132,10 @@ class NetworkDiagnosticsTest {
     @Test fun failureClassificationWalksCausesAndNeverExportsTheirMessages() {
         val cases = listOf(
             SocketException("Connection reset $sentinel") to "reset",
+            SocketException("Software caused connection abort $sentinel") to "abort",
+            IOException("recvfrom failed: ECONNABORTED") to "abort",
+            java.io.EOFException() to "eof",
+            IOException("unexpected end of stream on private address") to "eof",
             UnknownHostException(sentinel) to "dns",
             SocketTimeoutException(sentinel) to "timeout",
             SSLHandshakeException(sentinel) to "tls",

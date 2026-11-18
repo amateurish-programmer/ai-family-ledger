@@ -8,6 +8,8 @@ import android.util.Base64
 import com.familyledger.app.domain.LedgerEntry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -16,11 +18,13 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URI
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.util.UUID
+import kotlin.coroutines.CoroutineContext
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -269,6 +273,11 @@ class CloudService(context: Context) {
             ).run(local, manifest, indexes)
             mutate(version) { it.put("lastSync", System.currentTimeMillis()) }
             result.copy(elapsedMillis = (System.nanoTime() - started) / 1_000_000, requestCount = metrics.requests)
+        } catch (failure: IOException) {
+            if (isConnectionInterruption(failure)) {
+                throw IOException("同步连接中断，请在网络稳定后下拉刷新", failure)
+            }
+            throw failure
         } finally { syncMetrics = null }
     }
 
@@ -301,7 +310,7 @@ class CloudService(context: Context) {
         operations.withLock { block(synchronized(stateGuard) { ensureBuiltInConfiguration(); epoch }) }
     }
 
-    private fun pullManifest(family: String, version: Long): List<SyncManifest> {
+    private suspend fun pullManifest(family: String, version: Long): List<SyncManifest> {
         val result = mutableListOf<SyncManifest>()
         var cursor: String? = null
         var bytes = 0L
@@ -326,7 +335,7 @@ class CloudService(context: Context) {
         return result
     }
 
-    private fun fetchBatch(family: String, ids: List<String>, version: Long): List<SyncRemote> {
+    private suspend fun fetchBatch(family: String, ids: List<String>, version: Long): List<SyncRemote> {
         require(ids.size in 1..50 && ids.all { UUID.fromString(it).toString() == it })
         val rows = JSONArray(authorized("GET", "/rest/v1/ledger_entries?select=id,payload,revision&family_id=eq.$family&id=in.(" + ids.joinToString(",") + ")&limit=50", null, version))
         return (0 until rows.length()).map { remote(rows.getJSONObject(it)) }
@@ -338,7 +347,7 @@ class CloudService(context: Context) {
         return JSONObject().put("id", row.entry.id).put("payload", payload).put("expected_revision", row.expected)
     }
 
-    private fun pushBatch(family: String, rows: List<SyncUpload>, version: Long): List<SyncUploadResult> {
+    private suspend fun pushBatch(family: String, rows: List<SyncUpload>, version: Long): List<SyncUploadResult> {
         val response = JSONArray(rpc("put_ledger_entries", JSONObject().put("p_family", family)
             .put("p_entries", JSONArray().apply { rows.forEach { put(uploadJson(it)) } }), version))
         require(response.length() == rows.size) { "批量上传响应无效" }
@@ -356,7 +365,7 @@ class CloudService(context: Context) {
         }
     }
 
-    private fun fetchOne(family: String, id: String, version: Long): SyncRemote? {
+    private suspend fun fetchOne(family: String, id: String, version: Long): SyncRemote? {
         require(UUID.fromString(id).toString() == id)
         val rows = JSONArray(authorized("GET", "/rest/v1/ledger_entries?select=id,payload,revision&family_id=eq.$family&id=eq.$id&limit=1", null, version))
         return if (rows.length() == 0) null else remote(rows.getJSONObject(0))
@@ -370,7 +379,7 @@ class CloudService(context: Context) {
         return SyncRemote(entry, revision)
     }
 
-    private fun push(family: String, entry: LedgerEntry, expected: Long, version: Long): CloudConflict? {
+    private suspend fun push(family: String, entry: LedgerEntry, expected: Long, version: Long): CloudConflict? {
         val payload = BackupCodec.encode(listOf(entry))
         require(payload.toByteArray(Charsets.UTF_8).size <= MAX_ENTRY_BYTES) { "单条账目及导入来源过大" }
         val response = json(rpc("put_ledger_entry", JSONObject().put("p_family", family).put("p_id", entry.id).put("p_payload", payload).put("p_expected_revision", expected), version))
@@ -386,7 +395,7 @@ class CloudService(context: Context) {
         return CloudConflict(entry.id, entry, other, response.getLong("revision"))
     }
 
-    private fun recoverFamily(version: Long, required: Boolean): String? {
+    private suspend fun recoverFamily(version: Long, required: Boolean): String? {
         val raw = rpc("get_my_family", JSONObject(), version)
         if (raw.trim() == "null" || raw.isBlank()) {
             require(!state(version).has("familyId")) { "当前账号已失去绑定家庭成员权限，未同步" }
@@ -437,29 +446,32 @@ class CloudService(context: Context) {
         }
     }
 
-    private fun token(version: Long, forceRefresh: Boolean = false): String {
+    private fun token(version: Long, forceRefresh: Boolean, coroutine: CoroutineContext): String {
         val session = state(version)
         require(session.has("access")) { "请先登录云账号" }
         if (forceRefresh || session.optLong("expires") <= System.currentTimeMillis() + 60000) {
-            val updated = json(request("POST", "/auth/v1/token?grant_type=refresh_token", JSONObject().put("refresh_token", session.getString("refresh")), null, version))
+            val updated = json(request("POST", "/auth/v1/token?grant_type=refresh_token",
+                JSONObject().put("refresh_token", session.getString("refresh")), null, version, coroutine))
             acceptSession(updated, version)
         }
         return state(version).getString("access")
     }
 
-    private fun rpc(name: String, body: JSONObject, version: Long): String = authorized("POST", "/rest/v1/rpc/$name", body, version)
+    private suspend fun rpc(name: String, body: JSONObject, version: Long): String = authorized("POST", "/rest/v1/rpc/$name", body, version)
 
-    private fun authorized(method: String, path: String, body: JSONObject?, version: Long): String = try {
-        request(method, path, body, token(version), version)
-    } catch (e: HttpFailure) {
-        if (e.status != 401) throw e
-        request(method, path, body, token(version, forceRefresh = true), version)
+    private suspend fun authorized(method: String, path: String, body: JSONObject?, version: Long): String {
+        val coroutine = currentCoroutineContext()
+        return authorizedCloudRequest(method, path, { refresh -> token(version, refresh, coroutine) },
+            { CloudNetwork.awaitStableDefault(appContext) }) { bearer ->
+            request(method, path, body, bearer, version, coroutine)
+        }
     }
 
-    private class HttpFailure(val status: Int, message: String) : IllegalStateException(message)
-
-    private fun request(method: String, path: String, body: JSONObject?, bearer: String?, version: Long): String =
-        CloudNetwork.withRoute(appContext) { direct -> send(method, path, body, bearer, version, direct) }
+    private fun request(method: String, path: String, body: JSONObject?, bearer: String?, version: Long,
+        coroutine: CoroutineContext? = null): String = CloudNetwork.withRoute(appContext) { direct ->
+        coroutine?.ensureActive()
+        send(method, path, body, bearer, version, direct)
+    }
 
     private fun send(method: String, path: String, body: JSONObject?, bearer: String?, version: Long,
         preferDirect: Boolean): String {
@@ -504,28 +516,30 @@ class CloudService(context: Context) {
             diagnostic?.httpStatus = code
             require(code !in 300..399) { "服务器重定向已拒绝，凭据未转发" }
             diagnostic?.stage = DiagnosticStage.READ_BODY
-            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-            val bytes = stream?.use { input ->
-                val output = java.io.ByteArrayOutputStream()
-                val buffer = ByteArray(8192)
-                while (true) {
-                    require(System.nanoTime() < deadline) { "云端响应超时，请稍后重试" }
-                    val count = input.read(buffer)
-                    if (count < 0) break
-                    require(output.size() + count <= MAX_RESPONSE) { "云端响应超过大小上限" }
-                    output.write(buffer, 0, count)
-                }
-                output.toByteArray()
-            } ?: byteArrayOf()
+            val bytes = readCloudResponseBody(code) {
+                val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+                stream?.use { input ->
+                    val output = java.io.ByteArrayOutputStream()
+                    val buffer = ByteArray(8192)
+                    while (true) {
+                        require(System.nanoTime() < deadline) { "云端响应超时，请稍后重试" }
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        require(output.size() + count <= MAX_RESPONSE) { "云端响应超过大小上限" }
+                        output.write(buffer, 0, count)
+                    }
+                    output.toByteArray()
+                } ?: byteArrayOf()
+            }
             diagnostic?.stage = DiagnosticStage.COMPLETE
             synchronized(stateGuard) { checkEpoch(version) }
             if (code !in 200..299) {
                 // Do not expose raw server errors, which may echo account/ledger content.
-                throw HttpFailure(code, CloudErrors.message(code, path, String(bytes, Charsets.UTF_8)))
+                throw CloudHttpFailure(code, CloudErrors.message(code, path, String(bytes, Charsets.UTF_8)))
             }
             return String(bytes, Charsets.UTF_8)
         } catch (failure: Throwable) {
-            if (failure !is HttpFailure) diagnostic?.failure = failure
+            if (failure !is CloudHttpFailure) diagnostic?.failure = failure
             throw failure
         } finally {
             diagnostic?.finish()

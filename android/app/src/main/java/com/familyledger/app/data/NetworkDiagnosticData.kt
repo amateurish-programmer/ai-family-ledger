@@ -86,7 +86,7 @@ private val requestCategories = mapOf(
 ) + listOf("get_my_family", "get_ledger_manifest", "put_ledger_entries", "put_ledger_entry",
     "create_family", "join_family", "create_invite", "update_family_profile").associate { "/rest/v1/rpc/$it" to it }
 private val requestCategoryLabels = requestCategories.values.toSet() + setOf("auth_refresh", "auth_password", "other")
-private val failures = setOf("reset", "dns", "timeout", "tls", "io", "other")
+private val failures = setOf("abort", "reset", "eof", "dns", "timeout", "tls", "io", "other")
 
 /** Only exact public grant names are mapped; arbitrary query values never survive this function. */
 internal fun diagnosticRequestCategory(path: String): String {
@@ -103,11 +103,18 @@ internal fun diagnosticRequestCategory(path: String): String {
 internal fun diagnosticFailure(failure: Throwable): String {
     val seen = Collections.newSetFromMap(IdentityHashMap<Throwable, Boolean>())
     val causes = generateSequence(failure) { it.cause }.takeWhile { seen.add(it) }.take(24).toList()
+    fun ioMessageContains(text: String) = causes.any { it is IOException && it.message.orEmpty().contains(text, ignoreCase = true) }
     return when {
-        causes.any { it is SSLException } -> "tls"
+        causes.any { it is java.security.cert.CertificateException || it is java.security.cert.CertPathValidatorException ||
+            it is javax.net.ssl.SSLPeerUnverifiedException } -> "tls"
         causes.any { it is UnknownHostException } -> "dns"
         causes.any { it is SocketTimeoutException || it is java.util.concurrent.TimeoutException } -> "timeout"
-        causes.any { it is SocketException && it.message.orEmpty().contains("reset", ignoreCase = true) } -> "reset"
+        ioMessageContains("connection abort") || ioMessageContains("ECONNABORTED") ||
+            causes.any { it is SocketException && it.message.equals("Socket closed", ignoreCase = true) } -> "abort"
+        ioMessageContains("connection reset") || ioMessageContains("ECONNRESET") ||
+            causes.any { it is SocketException && it.message.orEmpty().contains("reset", ignoreCase = true) } -> "reset"
+        causes.any { it is java.io.EOFException } || ioMessageContains("unexpected end of stream") -> "eof"
+        causes.any { it is SSLException } -> "tls"
         causes.any { it is IOException } -> "io"
         else -> "other"
     }
